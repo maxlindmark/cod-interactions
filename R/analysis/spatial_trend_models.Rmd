@@ -1,0 +1,356 @@
+---
+title: "Cod density in relation to oxygen"
+author: "Max Lindmark, Sean Andersson, Michele Casini"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+  df_print: paged
+pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+  
+```{r setup, include = FALSE, cache=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 12,
+  fig.asp = 0.618,
+  fig.align ='center'
+)
+```
+
+# Intro
+Fit density (also referred to as CPUE) model with environmental predictors and use that to calculate weighted mean dissolved oxygen, temperature and depth of Baltic cod
+
+```{r lib, message=FALSE}
+# Load libraries, install if needed
+library(tidyverse); theme_set(theme_light(base_size = 10))
+library(readxl)
+library(tidylog)
+library(RCurl)
+library(viridis)
+library(RColorBrewer)
+library(patchwork)
+library(janitor)
+library(icesDatras)
+library(mapdata)
+library(patchwork)
+library(rgdal)
+library(raster)
+library(sf)
+library(rgeos)
+library(chron)
+library(lattice)
+library(ncdf4)
+library(marmap)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(mapplots)
+library(qwraps2) 
+#remotes::install_github("pbs-assess/sdmTMB")
+library(sdmTMB)# To load entire cache in interactive r session, do: qwraps2::lazyload_cache_dir(path = "R/analysis/cpue_model_cache/html")
+```
+
+## For maps
+
+```{r read coastline data, message=FALSE, warning=FALSE}
+# Specify map ranges
+ymin = 54; ymax = 58; xmin = 12; xmax = 22
+
+map_data <- rnaturalearth::ne_countries(
+  scale = "medium",
+  returnclass = "sf", continent = "europe")
+
+# Crop the polygon for plotting and efficiency:
+# st_bbox(map_data) # find the rough coordinates
+swe_coast <- suppressWarnings(suppressMessages(
+  st_crop(map_data,
+          c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax))))
+
+# Transform our map into UTM 33 coordinates, which is the equal-area projection we fit in:
+utm_zone33 <- 32633
+swe_coast_proj <- sf::st_transform(swe_coast, crs = utm_zone33)
+
+ggplot(swe_coast_proj) + geom_sf() 
+
+# Define plotting theme for main plot
+theme_plot <- function(base_size = 10, base_family = "") {
+  theme_light(base_size = 10, base_family = "") +
+    theme(
+      axis.text.x = element_text(angle = 90),
+      axis.text = element_text(size = 8),
+      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 8),
+      legend.position = "bottom",
+      legend.key.height = unit(0.2, "cm"),
+      legend.margin = margin(0, 0, 0, 0),
+      legend.box.margin = margin(-5, -5, -5, -5),
+      strip.text = element_text(size = 8, colour = 'black', margin = margin()),
+      strip.background = element_rect(fill = "grey90")
+      )
+}
+
+# Define plotting theme for facet_wrap map with years
+theme_facet_map <- function(base_size = 10, base_family = "") {
+  theme_light(base_size = 10, base_family = "") +
+    theme(
+        axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 6),
+        strip.text = element_text(size = 8, colour = 'black', margin = margin()),
+        strip.background = element_rect(fill = "grey90")
+      )
+}
+
+# Make default base map plot
+plot_map_raster <- 
+ggplot(swe_coast_proj) + 
+  geom_sf(size = 0.3) +
+  labs(x = "Longitude", y = "Latitude") +
+  theme_facet_map(base_size = 14)
+```
+
+## Read data
+
+```{r read and process data, message=FALSE, warning=FALSE}
+d <- readr::read_csv("https://raw.githubusercontent.com/maxlindmark/cod_condition/master/data/for_analysis/mdat_cpue.csv")
+
+# Calculate standardized variables
+d <- d %>% 
+  mutate(oxy_sc = oxy,
+         temp_sc = temp,
+         depth_sc = depth,
+         ) %>%
+  mutate_at(c("oxy_sc", "temp_sc", "depth_sc"),
+            ~(scale(.) %>% as.vector)) %>% 
+  mutate(year = as.integer(year)) %>% 
+  drop_na(oxy, depth, temp) %>% 
+  rename("density_cod" = "density") # to fit better with how flounder is named
+```
+
+## Read the prediction grids
+
+```{r read and process prediction grid, message=FALSE, warning=FALSE}
+# And now read in pred_grid2 which has oxygen values at location and time and depth:
+pred_grid2 <- readr::read_csv("https://raw.githubusercontent.com/maxlindmark/cod_condition/master/data/for_analysis/pred_grid2.csv")
+
+# Standardize data with respect to prediction grid:
+pred_grid2 <- pred_grid2 %>%
+  mutate(year = as.integer(year)) %>% 
+  filter(year %in% c(unique(d$year))) %>% 
+  mutate(depth_sc = (depth - mean(d$depth))/sd(d$depth),
+         temp_sc = (temp - mean(d$temp))/sd(d$temp),
+         oxy_sc = (oxy - mean(d$oxy))/sd(d$oxy)) %>% # Need to scale these to the mean and sd in the data!
+  drop_na(oxy, depth, temp)
+```
+
+## Make spde mesh
+
+```{r make barrier spde mesh, results='hide', cache=TRUE, message=FALSE}
+spde <- make_mesh(d, xy_cols = c("X", "Y"),
+                  n_knots = 100, 
+                  type = "kmeans", seed = 42)
+
+# Plot and save spde
+png(file = "figures/supp/density_spde.png", units = "in", width = 6.5, height = 6.5, res = 300)
+plot(spde)
+dev.off()
+```
+
+## Fit the density models
+### Cod
+#### With all covariates
+
+```{r fit cod covariates and field, results='hide', cache=TRUE, message=FALSE}
+mcod1 <- sdmTMB(density_cod ~ 1 + s(depth_sc) + s(oxy_sc) + s(temp_sc),
+                data = d, spde = spde, family = tweedie(link = "log"),
+                fields = "AR1", include_spatial = TRUE, time = "year",
+                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mcod1, conf.int = TRUE)
+
+d$residualsmcod1 <- residuals(mcod1)
+qqnorm(d$residualsmcod1); abline(a = 0, b = 1)
+
+# Check AR1 param
+mcodsd1 <- as.data.frame(summary(TMB::sdreport(mcod$tmb_obj)))
+mcodsd1$Estimate[row.names(mcodsd1) == "ar1_phi"]
+mcodsd1$Estimate[row.names(mcodsd1) == "ar1_phi"] +
+  c(-2, 2) * mcodsd1$`Std. Error`[row.names(mcodsd1) == "ar1_phi"]
+```
+
+#### Only depth covariate
+
+```{r fit cod depth covariate, results='hide', cache=TRUE, message=FALSE}
+mcod2 <- sdmTMB(density_cod ~ 1 + s(depth_sc),
+                data = d, spde = spde, family = tweedie(link = "log"),
+                fields = "AR1", include_spatial = TRUE, time = "year",
+                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mcod2, conf.int = TRUE)
+
+d$residualsmcod2 <- residuals(mcod2)
+qqnorm(d$residualsmcod2); abline(a = 0, b = 1)
+```
+
+#### No covariates
+
+```{r fit cod no covars, results='hide', cache=TRUE, message=FALSE}
+mcod3 <- sdmTMB(density_cod ~ 1,
+               data = d, spde = spde, family = tweedie(link = "log"),
+               fields = "AR1", include_spatial = TRUE, time = "year",
+               spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+               control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mcod3, conf.int = TRUE)
+
+d$residualsmcod3 <- residuals(mcod3)
+qqnorm(d$residualsmcod3); abline(a = 0, b = 1)
+```
+
+### Flounder
+#### With all covariates
+
+```{r fit fle covariates and field, results='hide', cache=TRUE, message=FALSE}
+mfle1 <- sdmTMB(density_fle ~ 1 + s(depth_sc) + s(oxy_sc) + s(temp_sc),
+                data = d, spde = spde, family = tweedie(link = "log"),
+                fields = "AR1", include_spatial = TRUE, time = "year",
+                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mfle1, conf.int = TRUE)
+
+d$residualsmfle1 <- residuals(mfle1)
+qqnorm(d$residualsmfle1); abline(a = 0, b = 1)
+
+# Check AR1 param
+mflesd1 <- as.data.frame(summary(TMB::sdreport(mfle$tmb_obj)))
+mflesd1$Estimate[row.names(mflesd1) == "ar1_phi"]
+mflesd1$Estimate[row.names(mflesd1) == "ar1_phi"] +
+  c(-2, 2) * mflesd1$`Std. Error`[row.names(mflesd1) == "ar1_phi"]
+```
+
+#### Only depth covariate
+
+```{r fit fle depth covariate, results='hide', cache=TRUE, message=FALSE}
+mfle2 <- sdmTMB(density_fle ~ 1 + s(depth_sc),
+                data = d, spde = spde, family = tweedie(link = "log"),
+                fields = "AR1", include_spatial = TRUE, time = "year",
+                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mfle2, conf.int = TRUE)
+
+d$residualsmfle2 <- residuals(mfle2)
+qqnorm(d$residualsmfle2); abline(a = 0, b = 1)
+```
+
+#### No covariates
+
+```{r fit fle no covars, results='hide', cache=TRUE, message=FALSE}
+mfle3 <- sdmTMB(density_fle ~ 1,
+               data = d, spde = spde, family = tweedie(link = "log"),
+               fields = "AR1", include_spatial = TRUE, time = "year",
+               spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+               control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mfle3, conf.int = TRUE)
+
+d$residualsmfle3 <- residuals(mfle3)
+qqnorm(d$residualsmfle3); abline(a = 0, b = 1)
+```
+
+## Predict on grid
+
+```{r predict on grid, cache=TRUE}
+predcod <- predict(mcod2, newdata = pred_grid2)
+predfle <- predict(mfle2, newdata = pred_grid2)
+```
+
+## Plot spatial trend s
+
+```{r spatial trends, cache=TRUE}
+# Cod
+plot_map_raster +
+  geom_raster(data = filter(predcod, year == 1999), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
+  scale_fill_gradient2() +
+  ggtitle("Spatial trend effects") +
+  theme_plot()
+
+ggsave("figures/zeta_s_cod_map.png", width = 6.5, height = 6.5, dpi = 600)
+
+# Flounder
+plot_map_raster +
+  geom_raster(data = filter(predfle, year == 1999), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
+  scale_fill_gradient2() +
+  ggtitle("Spatial trend effects") +
+  theme_plot()
+
+ggsave("figures/zeta_s_fle_map.png", width = 6.5, height = 6.5, dpi = 600)
+```
+
+## Plot correlation between spatial trends
+```{r cod fle correlation}
+all_pred <- predcod %>%
+  rename("cod_est" = "est",
+         "cod_est_non_rf" = "est_non_rf",
+         "cod_est_rf" = "est_rf",
+         "cod_omega_s" = "omega_s",
+         "cod_zeta_s" = "zeta_s",
+         "cod_epsilon_st" = "epsilon_st") %>% 
+  mutate(fle_est = predfle$est, # Change to predfle
+         fle_est_non_rf = predfle$est_non_rf,
+         fle_est_rf = predfle$est_rf,
+         fle_omega_s = predfle$omega_s,
+         fle_zeta_s = predfle$zeta_s,
+         fle_epsilon_st = predfle$epsilon_st) %>% 
+  filter(year == 1999)
+
+ggplot(all_pred, aes(fle_zeta_s, cod_zeta_s)) +
+  geom_point() + 
+  geom_abline(color = "red")
+
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+## Plot predictions on map
+
+```{r plot, include=FALSE}
+# Plot predicted density and random effects
+plot_map_raster +
+  geom_raster(data = predict_mcod, aes(x = X * 1000, y = Y * 1000, fill = exp(est))) +
+  scale_fill_viridis_c(trans = "sqrt") +
+  facet_wrap(~ year, ncol = 5) +
+  labs(fill = expression(kg/km^2)) +
+  ggtitle("Predicted density (fixed + random)")
+  
+ggsave("figures/supp/density/est_map.png", width = 6.5, height = 6.5, dpi = 600)
+
+# Plot spatiotemporal random effect
+plot_map_raster +
+  geom_raster(data = predict_mcod, aes(x = X * 1000, y = Y * 1000, fill = epsilon_st)) +
+  scale_fill_gradient2() +
+  facet_wrap(~ year, ncol = 5) +
+  ggtitle("Spatiotemporal random effects")
+
+ggsave("figures/supp/density/epsilon_st_map.png", width = 6.5, height = 6.5, dpi = 600)
+
+# Plot spatial random effect
+plot_map_raster +
+  geom_raster(data = filter(predict_mcod, year == 1999), aes(x = X * 1000, y = Y * 1000, fill = omega_s)) +
+  scale_fill_gradient2() +
+  facet_wrap(~ year, ncol = 5) +
+  ggtitle("Spatial random effects") +
+  theme_plot()
+
+ggsave("figures/supp/density/omega_s_map.png", width = 6.5, height = 6.5, dpi = 600)
+```
+
+```{r}
+knitr::knit_exit()
+```
