@@ -1,0 +1,762 @@
+---
+title: "Spatial trend models fitted to cod and flounder density"
+author: "Max Lindmark & Michele Casini"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+  df_print: paged
+pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+  
+```{r setup, include = FALSE, cache=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 12,
+  fig.asp = 0.618,
+  fig.align ='center'
+)
+```
+
+# Intro
+Fit density (also referred to as CPUE) model with environmental predictors and use that to calculate weighted mean dissolved oxygen, temperature and depth of Baltic cod
+
+```{r lib, message=FALSE}
+# Load libraries, install if needed
+library(tidyverse); theme_set(theme_light(base_size = 10))
+library(readxl)
+library(tidylog)
+library(RCurl)
+library(viridis)
+library(RColorBrewer)
+library(patchwork)
+library(janitor)
+library(icesDatras)
+library(mapdata)
+library(patchwork)
+library(rgdal)
+library(raster)
+library(sf)
+library(rgeos)
+library(chron)
+library(lattice)
+library(ncdf4)
+library(marmap)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(mapplots)
+library(qwraps2)
+#remotes::install_github("pbs-assess/sdmTMB")
+library(sdmTMB)# To load entire cache in interactive r session, do: qwraps2::lazyload_cache_dir(path = "R/analysis/density_spatial_trend_models_cache/html")
+```
+
+## For maps
+
+```{r read coastline data, message=FALSE, warning=FALSE}
+# Specify map ranges
+ymin = 54; ymax = 58; xmin = 12; xmax = 22
+
+map_data <- rnaturalearth::ne_countries(
+  scale = "medium",
+  returnclass = "sf", continent = "europe")
+
+# Crop the polygon for plotting and efficiency:
+# st_bbox(map_data) # find the rough coordinates
+swe_coast <- suppressWarnings(suppressMessages(
+  st_crop(map_data,
+          c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax))))
+
+# Transform our map into UTM 33 coordinates, which is the equal-area projection we fit in:
+utm_zone33 <- 32633
+swe_coast_proj <- sf::st_transform(swe_coast, crs = utm_zone33)
+
+ggplot(swe_coast_proj) + geom_sf() 
+
+# Define plotting theme for main plot
+theme_plot <- function(base_size = 10, base_family = "") {
+  theme_light(base_size = 10, base_family = "") +
+    theme(
+      axis.text.x = element_text(angle = 90),
+      axis.text = element_text(size = 8),
+      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 8),
+      legend.position = "bottom",
+      legend.key.height = unit(0.2, "cm"),
+      legend.margin = margin(0, 0, 0, 0),
+      legend.box.margin = margin(-5, -5, -5, -5),
+      strip.text = element_text(size = 8, colour = 'black', margin = margin()),
+      strip.background = element_rect(fill = "grey90")
+      )
+}
+
+# Define plotting theme for facet_wrap map with years
+theme_facet_map <- function(base_size = 10, base_family = "") {
+  theme_light(base_size = 10, base_family = "") +
+    theme(
+        axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 6),
+        strip.text = element_text(size = 8, colour = 'black', margin = margin()),
+        strip.background = element_rect(fill = "grey90")
+      )
+}
+
+# Make default base map plot
+plot_map_raster <- 
+ggplot(swe_coast_proj) + 
+  geom_sf(size = 0.3) +
+  labs(x = "Longitude", y = "Latitude") +
+  theme_facet_map(base_size = 14)
+
+# Function to convert from lat lon to UTM
+LongLatToUTM <- function(x, y, zone){
+  xy <- data.frame(ID = 1:length(x), X = x, Y = y)
+  coordinates(xy) <- c("X", "Y")
+  proj4string(xy) <- CRS("+proj=longlat +datum=WGS84")  ## for example
+  res <- spTransform(xy, CRS(paste("+proj=utm +zone=",zone," ellps=WGS84",sep='')))
+  return(as.data.frame(res))
+}
+```
+
+## Read data
+
+```{r read and process data, message=FALSE, warning=FALSE}
+d <- readr::read_csv("https://raw.githubusercontent.com/maxlindmark/cod_condition/master/data/for_analysis/mdat_cpue.csv")
+
+# Calculate standardized variables
+d <- d %>% 
+  mutate(oxy_sc = oxy,
+         temp_sc = temp,
+         depth_sc = depth,
+         ) %>%
+  mutate_at(c("oxy_sc", "temp_sc", "depth_sc"),
+            ~(scale(.) %>% as.vector)) %>% 
+  mutate(year = as.integer(year)) %>% 
+  drop_na(oxy, depth, temp) %>% 
+  rename("density_cod" = "density") # to fit better with how flounder is named
+```
+
+## Read the prediction grids
+
+```{r read and process prediction grid, message=FALSE, warning=FALSE}
+# And now read in pred_grid2 which has oxygen values at location and time and depth:
+pred_grid2 <- readr::read_csv("https://raw.githubusercontent.com/maxlindmark/cod_condition/master/data/for_analysis/pred_grid2.csv")
+
+# Standardize data with respect to prediction grid:
+pred_grid2 <- pred_grid2 %>%
+  mutate(year = as.integer(year)) %>% 
+  filter(year %in% c(unique(d$year))) %>% 
+  mutate(depth_sc = (depth - mean(d$depth))/sd(d$depth),
+         temp_sc = (temp - mean(d$temp))/sd(d$temp),
+         oxy_sc = (oxy - mean(d$oxy))/sd(d$oxy)) %>% # Need to scale these to the mean and sd in the data!
+  drop_na(oxy, depth, temp)
+
+# Add ices_rect
+pred_grid2$ices_rect <- ices.rect2(pred_grid2$lon, pred_grid2$lat) 
+```
+
+## Make spde mesh
+
+```{r make barrier spde mesh, results='hide', cache=TRUE, message=FALSE}
+spde <- make_mesh(d, xy_cols = c("X", "Y"),
+                  n_knots = 100, 
+                  type = "kmeans", seed = 42)
+
+# Plot and save spde
+png(file = "figures/supp/density_spde.png", units = "in", width = 6.5, height = 6.5, res = 300)
+plot(spde)
+dev.off()
+```
+
+## Fit the density models
+### Cod
+#### With all covariates
+
+```{r fit cod covariates and field, results='hide', cache=TRUE, message=FALSE}
+# mcod1 <- sdmTMB(density_cod ~ 1 + s(depth_sc) + s(oxy_sc) + s(temp_sc),
+#                 data = d, spde = spde, family = tweedie(link = "log"),
+#                 fields = "AR1", include_spatial = TRUE, time = "year",
+#                 spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+#                 control = sdmTMBcontrol(newton_steps = 1))
+# 
+# tidy(mcod1, conf.int = TRUE)
+# 
+# d$residualsmcod1 <- residuals(mcod1)
+# qqnorm(d$residualsmcod1); abline(a = 0, b = 1)
+# 
+# # Check AR1 param
+# mcodsd1 <- as.data.frame(summary(TMB::sdreport(mcod1$tmb_obj)))
+# mcodsd1$Estimate[row.names(mcodsd1) == "ar1_phi"]
+# mcodsd1$Estimate[row.names(mcodsd1) == "ar1_phi"] +
+#   c(-2, 2) * mcodsd1$`Std. Error`[row.names(mcodsd1) == "ar1_phi"]
+```
+
+#### Only depth covariate
+
+```{r fit cod depth covariate, results='hide', cache=TRUE, message=FALSE}
+mcod2 <- sdmTMB(density_cod ~ 1 + s(depth_sc),
+                data = d, spde = spde, family = tweedie(link = "log"),
+                fields = "AR1", include_spatial = TRUE, time = "year",
+                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mcod2, conf.int = TRUE)
+
+d$residualsmcod2 <- residuals(mcod2)
+qqnorm(d$residualsmcod2); abline(a = 0, b = 1)
+```
+
+#### No covariates
+
+```{r fit cod no covars, results='hide', cache=TRUE, message=FALSE}
+# mcod3 <- sdmTMB(density_cod ~ 1,
+#                data = d, spde = spde, family = tweedie(link = "log"),
+#                fields = "AR1", include_spatial = TRUE, time = "year",
+#                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+#                control = sdmTMBcontrol(newton_steps = 1))
+# 
+# tidy(mcod3, conf.int = TRUE)
+# 
+# d$residualsmcod3 <- residuals(mcod3)
+# qqnorm(d$residualsmcod3); abline(a = 0, b = 1)
+```
+
+### Flounder
+#### With all covariates
+
+```{r fit fle covariates and field, results='hide', cache=TRUE, message=FALSE}
+# mfle1 <- sdmTMB(density_fle ~ 1 + s(depth_sc) + s(oxy_sc) + s(temp_sc),
+#                 data = d, spde = spde, family = tweedie(link = "log"),
+#                 fields = "AR1", include_spatial = TRUE, time = "year",
+#                 spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+#                 control = sdmTMBcontrol(newton_steps = 1))
+# 
+# tidy(mfle1, conf.int = TRUE)
+# 
+# d$residualsmfle1 <- residuals(mfle1)
+# qqnorm(d$residualsmfle1); abline(a = 0, b = 1)
+# 
+# # Check AR1 param
+# mflesd1 <- as.data.frame(summary(TMB::sdreport(mfle1$tmb_obj)))
+# mflesd1$Estimate[row.names(mflesd1) == "ar1_phi"]
+# mflesd1$Estimate[row.names(mflesd1) == "ar1_phi"] +
+#   c(-2, 2) * mflesd1$`Std. Error`[row.names(mflesd1) == "ar1_phi"]
+```
+
+#### Only depth covariate
+
+```{r fit fle depth covariate, results='hide', cache=TRUE, message=FALSE}
+mfle2 <- sdmTMB(density_fle ~ 1 + s(depth_sc),
+                data = d, spde = spde, family = tweedie(link = "log"),
+                fields = "AR1", include_spatial = TRUE, time = "year",
+                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mfle2, conf.int = TRUE)
+
+d$residualsmfle2 <- residuals(mfle2)
+qqnorm(d$residualsmfle2); abline(a = 0, b = 1)
+```
+
+#### No covariates
+
+```{r fit fle no covars, results='hide', cache=TRUE, message=FALSE}
+# mfle3 <- sdmTMB(density_fle ~ 1,
+#                data = d, spde = spde, family = tweedie(link = "log"),
+#                fields = "AR1", include_spatial = TRUE, time = "year",
+#                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+#                control = sdmTMBcontrol(newton_steps = 1))
+# 
+# tidy(mfle3, conf.int = TRUE)
+# 
+# d$residualsmfle3 <- residuals(mfle3)
+# qqnorm(d$residualsmfle3); abline(a = 0, b = 1)
+```
+
+## Now fit a simple, spatial trend condition model with depth as a covariate
+
+```{r condition model with spatial trend, cache = TRUE}
+dc <- readr::read_csv("https://raw.githubusercontent.com/maxlindmark/cod_condition/master/data/for_analysis/mdat_cond.csv")
+
+# Calculate standardized variables
+dc <- dc %>% 
+  mutate(year = as.integer(year),
+         depth_sc = depth,
+         ln_weight_g = log(weight_g),
+         ln_length_cm = log(length_cm)) %>%
+  mutate(depth_sc_sc = depth_sc - mean(depth_sc))
+
+spde <- make_mesh(dc, xy_cols = c("X", "Y"),
+                  n_knots = 200, 
+                  type = "kmeans", seed = 42)
+
+# Plot and save spde
+png(file = "figures/supp/condition_spde.png", units = "in", width = 6.5, height = 6.5, res = 300)
+plot(spde)
+dev.off()
+
+# Fit model
+mcond <- sdmTMB(ln_weight_g ~ 1 + ln_length_cm + s(depth_sc) ,
+                data = dc, spde = spde, student(link = "identity", df = 5),
+                fields = "AR1", include_spatial = TRUE, time = "year",
+                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                control = sdmTMBcontrol(newton_steps = 1))
+
+dc$residuals_mcond <- residuals(mcond)
+
+png(file = "figures/supp/condition_qq.png", units = "in", width = 6.5, height = 6.5, res = 300)
+qqnorm(dc$residuals_mcond); abline(a = 0, b = 1)
+dev.off()
+```
+
+## Predict density models on grid
+
+```{r predict on grid, cache=TRUE}
+predcod <- predict(mcod2, newdata = pred_grid2)
+predfle <- predict(mfle2, newdata = pred_grid2)
+
+# Condition
+predcondition <- predict(mcond, newdata = mutate(pred_grid2, ln_length_cm = 0))
+```
+
+## Plot spatial trend
+
+```{r spatial trends, cache=TRUE}
+# Cod
+p1 <- plot_map_raster +
+  geom_raster(data = filter(predcod, year == 1999), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
+  scale_fill_gradient2() +
+  ggtitle("Cod spatial trend") + 
+  theme_plot()
+
+ggsave("figures/zeta_s_cod_map.png", width = 6.5, height = 6.5, dpi = 600)
+
+# Flounder
+p2 <- plot_map_raster +
+  geom_raster(data = filter(predfle, year == 1999), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
+  scale_fill_gradient2() +
+  ggtitle("Flounder spatial trend") + 
+  theme_plot()
+
+ggsave("figures/zeta_s_fle_map.png", width = 6.5, height = 6.5, dpi = 600)
+
+# Cod condition
+p3 <- plot_map_raster +
+  geom_raster(data = filter(predcondition, year == 1999), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
+  scale_fill_gradient2() +
+  ggtitle("Cod condition spatial trend") + 
+  theme_plot()
+
+(p1 | p2) / (p3 + (plot_spacer())) 
+```
+
+## Plot correlation between spatial trends
+
+```{r cod fle correlation}
+all_pred <- predcod %>%
+  rename("cod_est" = "est",
+         "cod_est_non_rf" = "est_non_rf",
+         "cod_est_rf" = "est_rf",
+         "cod_omega_s" = "omega_s",
+         "cod_zeta_s" = "zeta_s",
+         "cod_epsilon_st" = "epsilon_st") %>% 
+  mutate(fle_est = predfle$est,
+         fle_est_non_rf = predfle$est_non_rf,
+         fle_est_rf = predfle$est_rf,
+         fle_omega_s = predfle$omega_s,
+         fle_zeta_s = predfle$zeta_s,
+         fle_epsilon_st = predfle$epsilon_st)
+  
+# Add ices_rectangle for grouped summaries further down
+all_pred$ices_rect <- ices.rect2(all_pred$lon, all_pred$lat) 
+
+ggplot(filter(all_pred, year == 1999), aes(fle_zeta_s, cod_zeta_s)) +
+  geom_point() + 
+  geom_abline(color = "red")
+```
+
+## Do the same but filer away the lowest predictions
+
+```{r explore spatial trends}
+# Cod
+plot_map_raster +
+  geom_raster(data = filter(predcod, year == 1999 & est > quantile(est, prob = 0.25)), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
+  scale_fill_gradient2() +
+  ggtitle("Spatial trend effects") +
+  theme_plot()
+
+# Flounder
+plot_map_raster +
+  geom_raster(data = filter(predfle, year == 1999 & est > quantile(est, prob = 0.25)), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
+  scale_fill_gradient2() +
+  ggtitle("Spatial trend effects") +
+  theme_plot()
+
+all_pred %>%
+  filter(cod_est > quantile(cod_est, prob = 0.25),
+         fle_est > quantile(fle_est, prob = 0.25)) %>%
+  ggplot(., aes(fle_zeta_s, cod_zeta_s)) +
+  geom_point() + 
+  geom_abline(color = "red")
+```
+
+## At which scale do we have negative correlatons?
+
+```{r scale of covariation}
+# All data
+ggplot(d, aes(density_fle, density_cod)) +
+  geom_point(alpha = 0.1)
+
+# The above plot however, contains rectangles where one species is not abundant, 
+# but the other could. Hence, this negative co-occurence
+# Average densities across rectangles
+d_sum <- d %>% 
+  group_by(ices_rect) %>% 
+  summarise(rec_density_cod = sum(density_cod),
+            rec_density_fle = sum(density_fle)) %>% 
+  ungroup() 
+
+# Add in the mid-coordinate of each ices rectangle
+d_sum$lon <- ices.rect(d_sum$ices_rect)[, 1]
+d_sum$lat <- ices.rect(d_sum$ices_rect)[, 2]
+
+# ... And add in the UTM coords base on the lon-lat
+utm_coords <- LongLatToUTM(d_sum$lon, d_sum$lat, zone = 33)
+d_sum$X <- utm_coords$X/1000
+d_sum$Y <- utm_coords$Y/1000
+
+# Cod
+p1 <- plot_map_raster +
+  geom_point(data = d_sum, aes(x = X * 1000, y = Y * 1000, color = log(rec_density_cod)),
+             size = 10, shape = 15) +
+  scale_color_viridis() + 
+  theme_plot()
+
+# Flounder
+p2 <- plot_map_raster +
+  geom_point(data = d_sum, aes(x = X * 1000, y = Y * 1000, color = log(rec_density_fle)),
+             size = 10, shape = 15) +
+  scale_color_viridis() + 
+  theme_plot()
+
+p1/p2
+
+# Now filter rectangles above a certain density threshold (10th percentile)
+d_filt <- d_sum %>% 
+  mutate(percentile_10_cod = quantile(rec_density_cod, prob = 0.25),
+         percentile_10_fle = quantile(rec_density_fle, prob = 0.25)) %>% 
+  mutate(rec_keep_cod = ifelse(rec_density_cod > percentile_10_cod, "Y", "N"),
+         rec_keep_fle = ifelse(rec_density_fle > percentile_10_fle, "Y", "N")) %>% 
+  filter(rec_keep_cod == "Y" & rec_keep_fle == "Y")
+
+# Plot again
+# Cod
+p3 <- plot_map_raster +
+  geom_point(data = d_filt, aes(x = X * 1000, y = Y * 1000, color = log(rec_density_cod)),
+             size = 10, shape = 15) +
+  scale_color_viridis() + 
+  theme_plot()
+
+# Flounder
+p4 <- plot_map_raster +
+  geom_point(data = d_filt, aes(x = X * 1000, y = Y * 1000, color = log(rec_density_fle)),
+             size = 10, shape = 15) +
+  scale_color_viridis() + 
+  theme_plot()
+
+(p1 | p2) / (p3 | p4)
+
+# Now plot the same relationship between flounder and cod density
+d %>% 
+  filter(ices_rect %in% d_filt$ices_rect) %>% 
+  ggplot(., aes(density_fle, density_cod)) +
+  geom_point(alpha = 0.6) +
+  facet_wrap(~ices_rect, scales = "free") + 
+  theme_facet_map() + 
+  coord_cartesian(expand = 0.02)
+
+p5 <- d %>% 
+  filter(ices_rect %in% d_filt$ices_rect) %>% 
+  ggplot(., aes(density_fle, density_cod)) +
+  geom_point(alpha = 0.1) +
+  theme_facet_map() + 
+  stat_smooth() + 
+  coord_cartesian(ylim = c(0, 4000), xlim = c(0, 2000))
+
+# Same, but now use the predicted estimates
+d$cod_pred <- predict(mcod2, newdata = d)$est
+d$fle_pred <- predict(mfle2, newdata = d)$est
+
+p6 <- d %>% 
+  filter(ices_rect %in% d_filt$ices_rect) %>% 
+  ggplot(., aes(exp(fle_pred), exp(cod_pred))) +
+  geom_point(alpha = 0.1) +
+  theme_facet_map() + 
+  stat_smooth() + 
+  coord_cartesian(ylim = c(0, 4000), xlim = c(0, 2000))
+
+p5/p6
+
+# Pred vs fitted
+d %>% 
+  filter(ices_rect %in% d_filt$ices_rect) %>% 
+  ggplot(., aes(density_cod, exp(cod_pred))) +
+  geom_point(alpha = 0.1) +
+  geom_abline(color = "red") +
+  theme_facet_map()
+
+d %>% 
+  filter(ices_rect %in% d_filt$ices_rect) %>% 
+  ggplot(., aes(density_fle, exp(fle_pred))) +
+  geom_point(alpha = 0.1) +
+  geom_abline(color = "red") +
+  theme_facet_map()
+
+# OK, no summarize this a bit. Let's look at presence absence.
+pres_abs <- d %>% 
+  filter(ices_rect %in% d_filt$ices_rect) %>% 
+  mutate(cod_pa = ifelse(density_cod > 0, "Y", "N"),
+         fle_pa = ifelse(density_fle > 0, "Y", "N"))
+  
+pres_abs %>% 
+  #filter(cod_pa == "Y" & fle_pa == "Y") %>% 
+  ggplot(., aes(fle_pa, cod_pa)) +
+  geom_jitter(alpha = 0.6) +
+#  facet_wrap(~ices_rect, scales = "free") + 
+#  theme_facet_map() + 
+#  coord_cartesian(expand = 0.02)
+  NULL
+
+# This is not an optimal plot though because most times you catch either one or the other...
+```
+
+## What about maximum haul biomass? And changes in proportion cod/flounder? We know they trend similarily in space, but not the absolute densities. Is there a threshold where they cannot increase more? Are the trends per rectangle linear or asymptote?
+
+```{r changes in haul biomass and proportions}
+# Calculate the ratio of flounder to cod
+all_pred <- all_pred %>%
+  mutate(fle_cod_prop = exp(all_pred$fle_est) / (exp(all_pred$cod_est) + exp(all_pred$fle_est)))
+
+# Calculate mean proportion to get the baseline
+mean_prop <- mean(all_pred$fle_cod_prop)
+
+# Plot ratio on map
+plot_map_raster +
+  geom_raster(data = all_pred, aes(x = X * 1000, y = Y * 1000, fill = fle_cod_prop)) +
+  scale_fill_gradient2(midpoint = mean_prop) +
+  ggtitle("Proportion flounder") +
+  facet_wrap(~ year) + 
+  theme_facet_map()
+
+# Plot delta_difference in proportion in a single map
+all_pred_93_grid <- all_pred %>% 
+  filter(year == 1993) %>% 
+  dplyr::select(X, Y, fle_cod_prop) %>% 
+  rename("fle_cod_prop_93" = "fle_cod_prop") %>% 
+  mutate(id = paste(X, Y, sep = "."))
+
+all_pred_19_grid <- all_pred %>% 
+  filter(year == 2019) %>% 
+  dplyr::select(X, Y, fle_cod_prop) %>% 
+  rename("fle_cod_prop_19" = "fle_cod_prop") %>% 
+  mutate(id = paste(X, Y, sep = ".")) %>% 
+  dplyr::select(-X, -Y)
+
+all_pred_delta_grid <- left_join(all_pred_93_grid, all_pred_19_grid, by = "id") %>% 
+  mutate(delta_prop = fle_cod_prop_19 - fle_cod_prop_93)
+
+plot_map_raster +
+  geom_raster(data = all_pred_delta_grid, aes(x = X * 1000, y = Y * 1000, fill = delta_prop)) +
+  scale_fill_gradient2() +
+  ggtitle(paste(expression(delta), "proportion flounder")) +
+  theme_plot()
+
+# Plot the delta_proportion flounder vs the spatial trend of cod_condition
+all_pred_delta_grid <- all_pred_delta_grid %>% mutate(id = paste(X, Y, sep = "."))
+predcondition_1999 <- predcondition %>% mutate(id = paste(X, Y, sep = ".")) %>% filter(year == 1999)
+
+all_pred_delta_grid_w_cond <- left_join(all_pred_delta_grid,
+                                        dplyr::select(predcondition_1999, id, zeta_s))
+
+ggplot(all_pred_delta_grid_w_cond,
+       aes(delta_prop, zeta_s)) + 
+  geom_point()
+
+# Same but averaged by ices rect
+all_pred_delta_grid_w_cond <- all_pred_delta_grid_w_cond %>% mutate(id = paste(X, Y, sep = "."))
+pred_grid2 <- pred_grid2 %>% mutate(id = paste(X, Y, sep = "."))
+
+all_pred_delta_grid_w_cond <- left_join(all_pred_delta_grid_w_cond, dplyr::select(pred_grid2, id, ices_rect))
+
+all_pred_delta_grid_w_cond %>% 
+  group_by(ices_rect) %>% 
+  summarise(mean_zeta_s = mean(zeta_s),
+            mean_delta_prop = mean(delta_prop)) %>% 
+  ungroup() %>% 
+  ggplot(., aes(mean_delta_prop, mean_zeta_s)) + 
+  stat_smooth() + 
+  geom_point()
+
+
+# Plot average over time by rectangle (centered withing rectangle)
+all_pred %>% 
+  group_by(year, ices_rect) %>% 
+  summarise(mean_prop = mean(fle_cod_prop),
+            sd_prop = sd(fle_cod_prop)) %>% 
+  ungroup() %>% 
+  group_by(ices_rect) %>% 
+  mutate(mean_prop_ct = mean_prop - mean(mean_prop)) %>% 
+  ungroup() %>% 
+  ggplot(., aes(year, mean_prop_ct, color = ices_rect)) + 
+  geom_line(alpha = 0.6) + 
+  stat_smooth(aes(year, mean_prop_ct), method = "gam", formula = y ~ s(x, k = 3),
+              inherit.aes = FALSE, size = 2, color = "gray20") + 
+  scale_color_viridis(discrete = TRUE, name = "") + 
+  coord_cartesian(expand = 0) + 
+  # theme(legend.position = c(0.13, 0.82), 
+  #       legend.text = element_text(size = 6)) +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 6)) +
+  guides(color = guide_legend(ncol = 17)) +
+  NULL
+
+# Plot the distributions of "delta" change by each rectangle
+all_pred_93 <- all_pred %>% 
+  group_by(year, ices_rect) %>% 
+  summarise(mean_prop_93 = mean(fle_cod_prop)) %>% 
+  ungroup() %>% 
+  filter(year == 1993)
+
+all_pred_19 <- all_pred %>% 
+  group_by(year, ices_rect) %>% 
+  summarise(mean_prop19 = mean(fle_cod_prop)) %>% 
+  ungroup() %>% 
+  filter(year == 2019)
+  
+all_pred_delta <- left_join(all_pred_93, dplyr::select(all_pred_19, -year)) %>% 
+  mutate(delta_prop = mean_prop19 - mean_prop_93)
+
+all_pred_delta %>% 
+  ggplot(., aes(delta_prop, fill = ices_rect)) + 
+  geom_histogram(alpha = 0.6) + 
+  geom_vline(xintercept = 0, linetype = 2, size = 1.5, color = "tomato") + 
+  scale_fill_viridis(discrete = TRUE, name = "") + 
+  coord_cartesian(expand = 0) + 
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 6)) +
+  guides(fill = guide_legend(ncol = 17)) +
+  NULL
+
+# Plot average over time
+all_pred %>% 
+  group_by(year) %>% 
+  summarise(mean_prop = mean(fle_cod_prop),
+            sd_prop = sd(fle_cod_prop)) %>% 
+  ggplot(., aes(year, mean_prop)) + 
+  geom_ribbon(aes(year, y = mean_prop, ymin = mean_prop - mean_prop, ymax = mean_prop + mean_prop),
+              fill = "grey70") + 
+  geom_line() + 
+  coord_cartesian(expand = 0)
+
+# See if I can mimic a carrying capacity in density...
+all_pred_rect_sum <- all_pred %>% 
+  group_by(year, ices_rect) %>% 
+  mutate(rect_sum_biom = sum(exp(cod_est) + exp(cod_est))) %>% 
+  ungroup() %>% 
+  group_by(ices_rect) %>% 
+  mutate(rect_sum_biom_ct = rect_sum_biom - mean(rect_sum_biom)) %>% 
+  ungroup()
+
+ggplot(all_pred_rect_sum, aes(year, rect_sum_biom/1000, color = ices_rect)) + 
+  geom_line(alpha = 1) +
+  facet_wrap(~ices_rect, scales = "free") +
+  guides(color = FALSE)
+  
+ggplot(all_pred_rect_sum, aes(year, rect_sum_biom_ct, color = ices_rect)) + 
+  geom_line(alpha = 0.6) +
+  guides(color = FALSE) +
+  scale_color_viridis(discrete = TRUE)
+```
+
+Identify why flounder are increasing their spatial range
+
+```{r mean depth change of flounder}
+wm_depth <- predfle %>%
+  group_by(year) %>%
+  summarise(#depth_wm = weighted.mean(depth, exp(est)), # This is the mean
+            "Density-weighted (5th decile, median)" = hutils::weighted_quantile(v = depth, w = exp(est), p = c(0.5)),
+            "Density-weighted (1st decile)" = hutils::weighted_quantile(v = depth, w = exp(est), p = c(0.1)),
+            "Density-weighted (9th decile)" = hutils::weighted_quantile(v = depth, w = exp(est), p = c(0.9))) %>% 
+  pivot_longer(cols = c("Density-weighted (5th decile, median)", "Density-weighted (1st decile)", "Density-weighted (9th decile)"),
+               names_to = "series", values_to = "depth") %>% 
+  group_by(series) %>%  # standarize within for easy plotting
+  mutate(depth_ct = depth - mean(depth)) %>% 
+  ungroup()
+  
+ggplot(wm_depth, aes(year, depth, color = series, group = series, fill = series)) +
+  stat_smooth(method = "gam", formula = y ~ s(x, k = 4), se = FALSE, size = 1) +
+  geom_point(size = 1.5, alpha = 0.8, color = "white", shape = 21) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  facet_wrap(~series) +
+  scale_color_viridis(discrete = TRUE) +
+  scale_fill_viridis(discrete = TRUE) +
+  guides(fill = FALSE, color = guide_legend(nrow = 4)) +
+  labs(y = "Depth [m]", x = "Year", color = "") +
+  theme_plot() +
+  theme(legend.position = "right") +
+  NULL
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+## Fit models of co-occurence usnig the package `gllvm`
+
+```{r fit gllvm models}
+data("spider")
+head(spider$abund)
+str(spider)
+str(spider$abund)
+
+# No covariates
+mdat <- data.frame(Cod = filter(d, year > 2015)$density_cod,
+                   Flounder = filter(d, year > 2015)$density_fle)
+fitx <- gllvm(y = mdat, family = "tweedie")
+cr <- getResidualCor(fitx)
+```
+
+## Plot predictions on map
+
+```{r plot, include=FALSE}
+# Plot predicted density and random effects
+plot_map_raster +
+  geom_raster(data = predict_mcod, aes(x = X * 1000, y = Y * 1000, fill = exp(est))) +
+  scale_fill_viridis_c(trans = "sqrt") +
+  facet_wrap(~ year, ncol = 5) +
+  labs(fill = expression(kg/km^2)) +
+  ggtitle("Predicted density (fixed + random)")
+  
+ggsave("figures/supp/density/est_map.png", width = 6.5, height = 6.5, dpi = 600)
+
+# Plot spatiotemporal random effect
+plot_map_raster +
+  geom_raster(data = predict_mcod, aes(x = X * 1000, y = Y * 1000, fill = epsilon_st)) +
+  scale_fill_gradient2() +
+  facet_wrap(~ year, ncol = 5) +
+  ggtitle("Spatiotemporal random effects")
+
+ggsave("figures/supp/density/epsilon_st_map.png", width = 6.5, height = 6.5, dpi = 600)
+
+# Plot spatial random effect
+plot_map_raster +
+  geom_raster(data = filter(predict_mcod, year == 1999), aes(x = X * 1000, y = Y * 1000, fill = omega_s)) +
+  scale_fill_gradient2() +
+  facet_wrap(~ year, ncol = 5) +
+  ggtitle("Spatial random effects") +
+  theme_plot()
+
+ggsave("figures/supp/density/omega_s_map.png", width = 6.5, height = 6.5, dpi = 600)
+```
+
