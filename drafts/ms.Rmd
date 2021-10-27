@@ -1,0 +1,36 @@
+---
+title: Cod-flounder interactions
+authors:
+  - name: Max Lindmark
+    thanks: Use footnote for providing further information about author (webpage, alternative address)---*not* for acknowledging funding agencies. Optional.
+    department: Department of Computer Science
+    affiliation: Cranberry-Lemon University
+    location: Pittsburgh, PA 15213
+    email: hippo@cs.cranberry-lemon.edu
+  - name: Michele Casini
+    department: Department of Electrical Engineering
+    affiliation: Mount-Sheikh University
+    location: Santa Narimana, Levand
+    email: stariate@ee.mount-sheikh.edu
+abstract: |
+  Enter the text of your abstract here.
+keywords:
+  - blah
+  - blee
+  - bloo
+  - these are optional and can be removed
+output:
+  bookdown::pdf_document2: default
+  bookdown::word_document2: default
+  bookdown::html_document2: default
+linkcolor: blue
+bibliography: references/cod_interactions.bib
+csl: references/fish-and-fisheries.csl
+---
+
+
+We found some cool stuff (Fig.\@ref(fig:main-fig))
+```{r main-fig, fig.cap = "Our Main Results"}
+plot(1:10)
+```
+# Supporting Information
