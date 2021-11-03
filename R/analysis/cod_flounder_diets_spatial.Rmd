@@ -1,0 +1,244 @@
+---
+title: "Cod diet: spatial analysis of cod and flounder diets in relation to density"
+author: "Max Lindmark & Michele Casini"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+  df_print: paged
+pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+  
+```{r setup, include = FALSE, cache=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 12,
+  fig.asp = 0.618,
+  fig.align ='center'
+)
+```
+
+# Intro
+Fit density (also referred to as CPUE) model with environmental predictors and use that to calculate weighted mean dissolved oxygen, temperature and depth of Baltic cod
+
+```{r lib, message=FALSE}
+# Load libraries, install if needed
+library(tidyverse); theme_set(theme_light(base_size = 10))
+library(readxl)
+library(tidylog)
+library(RCurl)
+library(viridis)
+library(RColorBrewer)
+library(patchwork)
+library(janitor)
+library(icesDatras)
+library(mapdata)
+library(patchwork)
+library(rgdal)
+library(raster)
+library(sf)
+library(rgeos)
+library(chron)
+library(lattice)
+library(ncdf4)
+library(marmap)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(mapplots)
+library(EnvStats)
+library(qwraps2)
+#remotes::install_github("pbs-assess/sdmTMB")
+library(sdmTMB)# To load entire cache in interactive r session, do: qwraps2::lazyload_cache_dir(path = "R/analysis/spatial_trend_models_cache/html")
+```
+
+## For maps
+
+```{r read coastline data, message=FALSE, warning=FALSE}
+# Specify map ranges
+ymin = 55; ymax = 58; xmin = 14; xmax = 20
+
+map_data <- rnaturalearth::ne_countries(
+  scale = "medium",
+  returnclass = "sf", continent = "europe")
+
+# Crop the polygon for plotting and efficiency:
+# st_bbox(map_data) # find the rough coordinates
+swe_coast <- suppressWarnings(suppressMessages(
+  st_crop(map_data,
+          c(xmin = xmin, ymin = ymin, xmax = xmax, ymax = ymax))))
+
+# Transform our map into UTM 33 coordinates, which is the equal-area projection we fit in:
+utm_zone33 <- 32633
+swe_coast_proj <- sf::st_transform(swe_coast, crs = utm_zone33)
+
+ggplot(swe_coast_proj) + geom_sf() 
+
+# Define plotting theme for main plot
+theme_plot <- function(base_size = 10, base_family = "") {
+  theme_light(base_size = 10, base_family = "") +
+    theme(
+      axis.text.x = element_text(angle = 90),
+      axis.text = element_text(size = 8),
+      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 8),
+      legend.position = "bottom",
+      legend.key.height = unit(0.2, "cm"),
+      legend.margin = margin(0, 0, 0, 0),
+      legend.box.margin = margin(-5, -5, -5, -5),
+      strip.text = element_text(size = 8, colour = 'black', margin = margin()),
+      strip.background = element_rect(fill = "grey90")
+      )
+}
+
+# Define plotting theme for facet_wrap map with years
+theme_facet_map <- function(base_size = 10, base_family = "") {
+  theme_light(base_size = 10, base_family = "") +
+    theme(
+        axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 6),
+        strip.text = element_text(size = 8, colour = 'black', margin = margin()),
+        strip.background = element_rect(fill = "grey90")
+      )
+}
+
+# Make default base map plot
+plot_map_raster <- 
+ggplot(swe_coast_proj) + 
+  geom_sf(size = 0.3) +
+  labs(x = "Longitude", y = "Latitude") +
+  theme_facet_map(base_size = 14)
+
+# Function to convert from lat lon to UTM
+LongLatToUTM <- function(x, y, zone){
+  xy <- data.frame(ID = 1:length(x), X = x, Y = y)
+  coordinates(xy) <- c("X", "Y")
+  proj4string(xy) <- CRS("+proj=longlat +datum=WGS84")  ## for example
+  res <- spTransform(xy, CRS(paste("+proj=utm +zone=",zone," ellps=WGS84",sep='')))
+  return(as.data.frame(res))
+}
+```
+
+## Try and fit sdmTMB models with densities as covariates... 
+
+```{r sdmTMB models fitted to diet, cache=TRUE}
+# Cod 
+pcod_spde <- make_mesh(cod_fr2, c("X", "Y"), n_knots = 150, type = "kmeans", seed = 42)
+plot(pcod_spde)
+
+pfle_spde <- make_mesh(fle_fr2, c("X", "Y"), n_knots = 70, type = "kmeans", seed = 42)
+plot(pfle_spde)
+
+# (add small values if 0, subtract small values if 1) for Beta regressions
+cod_fr2 <- cod_fr2 %>%
+  mutate(saduria_entomon_per_mass = saduria_entomon_tot/pred_weight_g,
+         prop_saduria2 = ifelse(prop_saduria == 0, prop_saduria + 0.0001, prop_saduria),
+         prop_saduria2 = ifelse(prop_saduria == 1, prop_saduria - 0.0001, prop_saduria2))
+
+fle_fr2 <- fle_fr2 %>%
+  mutate(saduria_entomon_per_mass = saduria_entomon_tot/pred_weight_g,
+         prop_saduria2 = ifelse(prop_saduria == 0, prop_saduria + 0.0001, prop_saduria),
+         prop_saduria2 = ifelse(prop_saduria == 1, prop_saduria - 0.0001, prop_saduria2)) 
+
+# OK, proportion models look absolutely AWFUL. I will model stomach content with a tweedie instead
+
+# Proportion Saduria
+# mcodsad <- sdmTMB(
+#   data = cod_fr2, 
+#   formula = prop_saduria2 ~ 0 + as.factor(year) + predfle_density_sc + predcod_density_sc,
+#   time = "year", fields = "IID", spatial_only = FALSE, spde = pcod_spde, family = student(df = 5))
+
+mcodsad <- sdmTMB(
+  data = cod_fr2, 
+  formula = saduria_entomon_per_mass ~ 0 + as.factor(year) + s(predfle_density_sc) + s(predcod_density_sc),
+  time = "year", fields = "IID", spatial_only = FALSE, spde = pcod_spde, family = tweedie())
+
+cod_fr2$resids_mcodsad <- residuals(mcodsad) # randomized quantile residuals
+hist(cod_fr2$resids_mcodsad)
+qqnorm(cod_fr2$resids_mcodsad); abline(a = 0, b = 1)
+
+tidy(mcodsad)
+summary(mcodsad)
+
+mflesad <- sdmTMB(
+  data = fle_fr2, 
+  formula = saduria_entomon_per_mass ~ 0 + as.factor(year) + s(predfle_density_sc) + s(predcod_density_sc),
+  time = "year", fields = "IID", spatial_only = FALSE, spde = pfle_spde, family = tweedie())
+
+tidy(mflesad)
+summary(mflesad)
+
+fle_fr2$resids_mflesad <- residuals(mflesad) # randomized quantile residuals
+hist(fle_fr2$resids_mflesad)
+qqnorm(fle_fr2$resids_mflesad); abline(a = 0, b = 1)
+
+# Plot marginal effects
+## Flounder
+# Flounder density
+nd_fle_fle <- data.frame(predfle_density_sc = seq(min(fle_fr2$predfle_density_sc),
+                                                  max(fle_fr2$predfle_density_sc), length.out = 100))
+
+nd_fle_fle$year <- 2018L
+nd_fle_fle$predcod_density_sc <- 0
+
+pred_fle_fle <- predict(mflesad, newdata = nd_fle_fle, se_fit = TRUE, re_form = NA)
+
+p1 <- ggplot(pred_fle_fle, aes(predfle_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) +
+  theme_classic(base_size = 14) + 
+  ggtitle("Fle stomach, flounder margin")
+
+# Cod density
+nd_fle_cod <- data.frame(predcod_density_sc = seq(min(fle_fr2$predcod_density_sc),
+                                                  max(fle_fr2$predcod_density_sc), length.out = 100))
+
+nd_fle_cod$year <- 2018L
+nd_fle_cod$predfle_density_sc <- 0
+
+pred_fle_cod <- predict(mflesad, newdata = nd_fle_cod, se_fit = TRUE, re_form = NA)
+
+p2 <- ggplot(pred_fle_cod, aes(predcod_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) + 
+  theme_classic(base_size = 14) +
+  ggtitle("Fle stomach, cod margin")
+
+flemargin <- p1 + p2 + plot_annotation(title = "Flounder marginal effects",
+                                       theme = theme(plot.title = element_text(size = 16)))
+
+## Cod
+# Flounder density
+nd_cod_fle <- data.frame(predfle_density_sc = seq(min(cod_fr2$predfle_density_sc),
+                                                  max(cod_fr2$predfle_density_sc), length.out = 100))
+
+nd_cod_fle$year <- 2018L
+nd_cod_fle$predcod_density_sc <- 0
+
+pred_cod_fle <- predict(mcodsad, newdata = nd_cod_fle, se_fit = TRUE, re_form = NA)
+
+p3 <- ggplot(pred_cod_fle, aes(predfle_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) +
+  theme_classic(base_size = 14) +
+  ggtitle("Cod stomach, flounder margin")
+
+# Cod density
+nd_cod_cod <- data.frame(predcod_density_sc = seq(min(cod_fr2$predcod_density_sc),
+                                                  max(cod_fr2$predcod_density_sc), length.out = 100))
+
+nd_cod_cod$year <- 2018L
+nd_cod_cod$predfle_density_sc <- 0
+
+pred_cod_cod <- predict(mcodsad, newdata = nd_cod_cod, se_fit = TRUE, re_form = NA)
+
+p4 <- ggplot(pred_cod_cod, aes(predcod_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) + 
+  theme_classic(base_size = 14) +
+  ggtitle("Cod stomach, cod margin")
+
+
+(p1 | p2) / (p3 | p4 )
+```

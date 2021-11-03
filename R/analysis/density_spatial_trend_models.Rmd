@@ -25,7 +25,7 @@ Fit density (also referred to as CPUE) model with environmental predictors and u
 
 ```{r lib, message=FALSE}
 # Load libraries, install if needed
-library(tidyverse); theme_set(theme_light(base_size = 10))
+library(tidyverse); theme_set(theme_classic(base_size = 10))
 library(readxl)
 library(tidylog)
 library(RCurl)
@@ -49,7 +49,9 @@ library(rnaturalearthdata)
 library(mapplots)
 library(qwraps2)
 #remotes::install_github("pbs-assess/sdmTMB")
-library(sdmTMB)# To load entire cache in interactive r session, do: qwraps2::lazyload_cache_dir(path = "R/analysis/density_spatial_trend_models_cache/html")
+library(sdmTMB)
+
+# To load entire cache in interactive r session, do: qwraps2::lazyload_cache_dir(path = "R/analysis/density_spatial_trend_models_cache/html")
 ```
 
 ## For maps
@@ -72,7 +74,10 @@ swe_coast <- suppressWarnings(suppressMessages(
 utm_zone33 <- 32633
 swe_coast_proj <- sf::st_transform(swe_coast, crs = utm_zone33)
 
-ggplot(swe_coast_proj) + geom_sf() 
+ggplot(swe_coast_proj) + geom_sf()  +
+   #xlim(230957.7, 1157991 - 300000) +
+   # ylim(6000000, 6500000 - 200000) +
+  NULL
 
 # Define plotting theme for main plot
 theme_plot <- function(base_size = 10, base_family = "") {
@@ -98,7 +103,9 @@ theme_facet_map <- function(base_size = 10, base_family = "") {
         axis.text.x = element_text(angle = 90),
         axis.text = element_text(size = 6),
         strip.text = element_text(size = 8, colour = 'black', margin = margin()),
-        strip.background = element_rect(fill = "grey90")
+        strip.background = element_rect(fill = "grey90"),
+        legend.position = c(0.7, 0.02),
+        legend.direction = "horizontal"
       )
 }
 
@@ -205,6 +212,10 @@ tidy(mcod2, conf.int = TRUE)
 
 d$residualsmcod2 <- residuals(mcod2)
 qqnorm(d$residualsmcod2); abline(a = 0, b = 1)
+
+# Save model
+saveRDS(mcod2, "output/mcod2.rds")
+# mcod2 <- readRDS("output/mcod2.rds")
 ```
 
 #### No covariates
@@ -257,6 +268,9 @@ tidy(mfle2, conf.int = TRUE)
 
 d$residualsmfle2 <- residuals(mfle2)
 qqnorm(d$residualsmfle2); abline(a = 0, b = 1)
+
+saveRDS(mfle2, "output/mfle2.rds")
+# mfle2 <- readRDS("output/mfle2.rds")
 ```
 
 #### No covariates
@@ -326,20 +340,16 @@ predcondition <- predict(mcond, newdata = mutate(pred_grid2, ln_length_cm = 0))
 # Cod
 p1 <- plot_map_raster +
   geom_raster(data = filter(predcod, year == 1999), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
-  scale_fill_gradient2() +
-  ggtitle("Cod spatial trend") + 
+  scale_fill_gradient2(limits = c(-0.2, 0.2)) +
+  ggtitle("Cod density spatial trend") + 
   theme_plot()
-
-ggsave("figures/zeta_s_cod_map.png", width = 6.5, height = 6.5, dpi = 600)
 
 # Flounder
 p2 <- plot_map_raster +
   geom_raster(data = filter(predfle, year == 1999), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
-  scale_fill_gradient2() +
+  scale_fill_gradient2(limits = c(-0.2, 0.2)) +
   ggtitle("Flounder spatial trend") + 
   theme_plot()
-
-ggsave("figures/zeta_s_fle_map.png", width = 6.5, height = 6.5, dpi = 600)
 
 # Cod condition
 p3 <- plot_map_raster +
@@ -349,6 +359,7 @@ p3 <- plot_map_raster +
   theme_plot()
 
 (p1 | p2) / (p3 + (plot_spacer())) 
+ggsave("figures/spatial_trends.png", width = 6.5, height = 6.5, dpi = 600)
 ```
 
 ## Plot correlation between spatial trends
@@ -374,11 +385,9 @@ all_pred$ices_rect <- ices.rect2(all_pred$lon, all_pred$lat)
 ggplot(filter(all_pred, year == 1999), aes(fle_zeta_s, cod_zeta_s)) +
   geom_point() + 
   geom_abline(color = "red")
-```
 
-## Do the same but filer away the lowest predictions
+# Do the same but filter away the lowest predictions so that we only compare areas where both species occur
 
-```{r explore spatial trends}
 # Cod
 plot_map_raster +
   geom_raster(data = filter(predcod, year == 1999 & est > quantile(est, prob = 0.25)), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
@@ -401,7 +410,7 @@ all_pred %>%
   geom_abline(color = "red")
 ```
 
-## At which scale do we have negative correlatons?
+## Do we even have negative covariance?
 
 ```{r scale of covariation}
 # All data
@@ -429,14 +438,14 @@ d_sum$Y <- utm_coords$Y/1000
 # Cod
 p1 <- plot_map_raster +
   geom_point(data = d_sum, aes(x = X * 1000, y = Y * 1000, color = log(rec_density_cod)),
-             size = 10, shape = 15) +
+             size = 5, shape = 15) +
   scale_color_viridis() + 
   theme_plot()
 
 # Flounder
 p2 <- plot_map_raster +
   geom_point(data = d_sum, aes(x = X * 1000, y = Y * 1000, color = log(rec_density_fle)),
-             size = 10, shape = 15) +
+             size = 5, shape = 15) +
   scale_color_viridis() + 
   theme_plot()
 
@@ -450,22 +459,24 @@ d_filt <- d_sum %>%
          rec_keep_fle = ifelse(rec_density_fle > percentile_10_fle, "Y", "N")) %>% 
   filter(rec_keep_cod == "Y" & rec_keep_fle == "Y")
 
-# Plot again
+# Plot again without the lowest densities
 # Cod
 p3 <- plot_map_raster +
   geom_point(data = d_filt, aes(x = X * 1000, y = Y * 1000, color = log(rec_density_cod)),
-             size = 10, shape = 15) +
+             size = 5, shape = 15) +
   scale_color_viridis() + 
   theme_plot()
 
 # Flounder
 p4 <- plot_map_raster +
   geom_point(data = d_filt, aes(x = X * 1000, y = Y * 1000, color = log(rec_density_fle)),
-             size = 10, shape = 15) +
+             size = 5, shape = 15) +
   scale_color_viridis() + 
   theme_plot()
 
 (p1 | p2) / (p3 | p4)
+
+# ************************************* continue here!!!!
 
 # Now plot the same relationship between flounder and cod density
 d %>% 
@@ -512,23 +523,6 @@ d %>%
   geom_point(alpha = 0.1) +
   geom_abline(color = "red") +
   theme_facet_map()
-
-# OK, no summarize this a bit. Let's look at presence absence.
-pres_abs <- d %>% 
-  filter(ices_rect %in% d_filt$ices_rect) %>% 
-  mutate(cod_pa = ifelse(density_cod > 0, "Y", "N"),
-         fle_pa = ifelse(density_fle > 0, "Y", "N"))
-  
-pres_abs %>% 
-  #filter(cod_pa == "Y" & fle_pa == "Y") %>% 
-  ggplot(., aes(fle_pa, cod_pa)) +
-  geom_jitter(alpha = 0.6) +
-#  facet_wrap(~ices_rect, scales = "free") + 
-#  theme_facet_map() + 
-#  coord_cartesian(expand = 0.02)
-  NULL
-
-# This is not an optimal plot though because most times you catch either one or the other...
 ```
 
 ## What about maximum haul biomass? And changes in proportion cod/flounder? We know they trend similarily in space, but not the absolute densities. Is there a threshold where they cannot increase more? Are the trends per rectangle linear or asymptote?
@@ -538,16 +532,36 @@ pres_abs %>%
 all_pred <- all_pred %>%
   mutate(fle_cod_prop = exp(all_pred$fle_est) / (exp(all_pred$cod_est) + exp(all_pred$fle_est)))
 
+# Calculate flounder and cod deciles, when plotting later I want to exclude a certain threshold
+all_pred <- all_pred %>% mutate(cod_5th_decile = quantile(cod_est, prob = 0.05),
+                                fle_5th_decile = quantile(fle_est, prob = 0.05))
+
 # Calculate mean proportion to get the baseline
 mean_prop <- mean(all_pred$fle_cod_prop)
 
 # Plot ratio on map
 plot_map_raster +
-  geom_raster(data = all_pred, aes(x = X * 1000, y = Y * 1000, fill = fle_cod_prop)) +
-  scale_fill_gradient2(midpoint = mean_prop) +
+  geom_raster(data = filter(all_pred, cod_est > cod_5th_decile & fle_est > fle_5th_decile),
+              aes(x = X * 1000, y = Y * 1000, fill = fle_cod_prop)) +
+  scale_fill_gradient2(midpoint = mean_prop, name = "proportion\nflounder") +
   ggtitle("Proportion flounder") +
   facet_wrap(~ year) + 
-  theme_facet_map()
+  theme_facet_map() +
+  theme(panel.background = element_rect(fill = 'gray70')) # to separate the midpoint from missing data!
+
+ggsave("figures/supp/proportion_all_years.png", width = 6.5, height = 6.5, dpi = 600)
+
+# For select years
+plot_map_raster +
+  geom_raster(data = filter(all_pred, cod_est > cod_5th_decile & fle_est > fle_5th_decile & 
+                              year %in% c(1993, 2002, 2010, 2019)),
+              aes(x = X * 1000, y = Y * 1000, fill = fle_cod_prop)) +
+  scale_fill_gradient2(midpoint = mean_prop, name = "proportion\nflounder") +
+  facet_wrap(~ year) + 
+  theme_plot() +
+  theme(panel.background = element_rect(fill = 'gray70')) # to separate the midpoint from missing data!
+
+ggsave("figures/proportion_fle_map.png", width = 6.5, height = 6.5, dpi = 600)
 
 # Plot delta_difference in proportion in a single map
 all_pred_93_grid <- all_pred %>% 
@@ -569,7 +583,7 @@ all_pred_delta_grid <- left_join(all_pred_93_grid, all_pred_19_grid, by = "id") 
 plot_map_raster +
   geom_raster(data = all_pred_delta_grid, aes(x = X * 1000, y = Y * 1000, fill = delta_prop)) +
   scale_fill_gradient2() +
-  ggtitle(paste(expression(delta), "proportion flounder")) +
+  ggtitle(paste(expression(delta), "Proportion flounder")) +
   theme_plot()
 
 # Plot the delta_proportion flounder vs the spatial trend of cod_condition
@@ -595,9 +609,11 @@ all_pred_delta_grid_w_cond %>%
             mean_delta_prop = mean(delta_prop)) %>% 
   ungroup() %>% 
   ggplot(., aes(mean_delta_prop, mean_zeta_s)) + 
-  stat_smooth() + 
-  geom_point()
+  stat_smooth(color = "tomato") + 
+  geom_point(size = 3, shape = 21, color = "white", fill = "gray30") +
+  labs(x = "Flounder spatial trend", y = "Condition spatial trend")
 
+ggsave("figures/rec_cond_fle_spatial_trend.png", width = 6.5, height = 6.5, dpi = 600)
 
 # Plot average over time by rectangle (centered withing rectangle)
 all_pred %>% 
@@ -614,8 +630,6 @@ all_pred %>%
               inherit.aes = FALSE, size = 2, color = "gray20") + 
   scale_color_viridis(discrete = TRUE, name = "") + 
   coord_cartesian(expand = 0) + 
-  # theme(legend.position = c(0.13, 0.82), 
-  #       legend.text = element_text(size = 6)) +
   theme(legend.position = "bottom",
         legend.text = element_text(size = 6)) +
   guides(color = guide_legend(ncol = 17)) +
@@ -672,14 +686,9 @@ ggplot(all_pred_rect_sum, aes(year, rect_sum_biom/1000, color = ices_rect)) +
   geom_line(alpha = 1) +
   facet_wrap(~ices_rect, scales = "free") +
   guides(color = FALSE)
-  
-ggplot(all_pred_rect_sum, aes(year, rect_sum_biom_ct, color = ices_rect)) + 
-  geom_line(alpha = 0.6) +
-  guides(color = FALSE) +
-  scale_color_viridis(discrete = TRUE)
 ```
 
-Identify why flounder are increasing their spatial range
+Plot biomass-weighted depth range of flounder
 
 ```{r mean depth change of flounder}
 wm_depth <- predfle %>%
@@ -689,16 +698,12 @@ wm_depth <- predfle %>%
             "Density-weighted (1st decile)" = hutils::weighted_quantile(v = depth, w = exp(est), p = c(0.1)),
             "Density-weighted (9th decile)" = hutils::weighted_quantile(v = depth, w = exp(est), p = c(0.9))) %>% 
   pivot_longer(cols = c("Density-weighted (5th decile, median)", "Density-weighted (1st decile)", "Density-weighted (9th decile)"),
-               names_to = "series", values_to = "depth") %>% 
-  group_by(series) %>%  # standarize within for easy plotting
-  mutate(depth_ct = depth - mean(depth)) %>% 
-  ungroup()
+               names_to = "series", values_to = "depth")
   
 ggplot(wm_depth, aes(year, depth, color = series, group = series, fill = series)) +
   stat_smooth(method = "gam", formula = y ~ s(x, k = 4), se = FALSE, size = 1) +
   geom_point(size = 1.5, alpha = 0.8, color = "white", shape = 21) +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
-  facet_wrap(~series) +
   scale_color_viridis(discrete = TRUE) +
   scale_fill_viridis(discrete = TRUE) +
   guides(fill = FALSE, color = guide_legend(nrow = 4)) +
@@ -710,21 +715,6 @@ ggplot(wm_depth, aes(year, depth, color = series, group = series, fill = series)
 
 ```{r}
 knitr::knit_exit()
-```
-
-## Fit models of co-occurence usnig the package `gllvm`
-
-```{r fit gllvm models}
-data("spider")
-head(spider$abund)
-str(spider)
-str(spider$abund)
-
-# No covariates
-mdat <- data.frame(Cod = filter(d, year > 2015)$density_cod,
-                   Flounder = filter(d, year > 2015)$density_fle)
-fitx <- gllvm(y = mdat, family = "tweedie")
-cr <- getResidualCor(fitx)
 ```
 
 ## Plot predictions on map
