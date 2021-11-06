@@ -133,15 +133,18 @@ d <- readr::read_csv("https://raw.githubusercontent.com/maxlindmark/cod_conditio
 
 # Calculate standardized variables
 d <- d %>% 
+  rename("density_cod" = "density") %>% # to fit better with how flounder is named
   mutate(oxy_sc = oxy,
          temp_sc = temp,
          depth_sc = depth,
+         density_cod_sc = density_cod,
+         density_fle_sc = density_fle
          ) %>%
-  mutate_at(c("oxy_sc", "temp_sc", "depth_sc"),
+  mutate_at(c("oxy_sc", "temp_sc", "depth_sc", "density_cod_sc", "density_fle_sc"),
             ~(scale(.) %>% as.vector)) %>% 
-  mutate(year = as.integer(year)) %>% 
-  drop_na(oxy, depth, temp) %>% 
-  rename("density_cod" = "density") # to fit better with how flounder is named
+  mutate(year = as.integer(year),
+         depth_sc_sq = depth_sc*depth_sc,) %>% 
+  drop_na(oxy, depth, temp)
 ```
 
 ## Read the prediction grids
@@ -155,6 +158,7 @@ pred_grid2 <- pred_grid2 %>%
   mutate(year = as.integer(year)) %>% 
   filter(year %in% c(unique(d$year))) %>% 
   mutate(depth_sc = (depth - mean(d$depth))/sd(d$depth),
+         depth_sc_sq = depth_sc*depth_sc,
          temp_sc = (temp - mean(d$temp))/sd(d$temp),
          oxy_sc = (oxy - mean(d$oxy))/sd(d$oxy)) %>% # Need to scale these to the mean and sd in the data!
   drop_na(oxy, depth, temp)
@@ -178,25 +182,23 @@ dev.off()
 
 ## Fit the density models
 ### Cod
-#### With all covariates
+#### With flounder covariates
 
 ```{r fit cod covariates and field, results='hide', cache=TRUE, message=FALSE}
-# mcod1 <- sdmTMB(density_cod ~ 1 + s(depth_sc) + s(oxy_sc) + s(temp_sc),
-#                 data = d, spde = spde, family = tweedie(link = "log"),
-#                 fields = "AR1", include_spatial = TRUE, time = "year",
-#                 spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
-#                 control = sdmTMBcontrol(newton_steps = 1))
-# 
-# tidy(mcod1, conf.int = TRUE)
-# 
-# d$residualsmcod1 <- residuals(mcod1)
-# qqnorm(d$residualsmcod1); abline(a = 0, b = 1)
-# 
-# # Check AR1 param
-# mcodsd1 <- as.data.frame(summary(TMB::sdreport(mcod1$tmb_obj)))
-# mcodsd1$Estimate[row.names(mcodsd1) == "ar1_phi"]
-# mcodsd1$Estimate[row.names(mcodsd1) == "ar1_phi"] +
-#   c(-2, 2) * mcodsd1$`Std. Error`[row.names(mcodsd1) == "ar1_phi"]
+mcod1 <- sdmTMB(density_cod ~ 1 + density_fle_sc*depth_sc + depth_sc_sq,
+                data = d, spde = spde, family = tweedie(link = "log"),
+                fields = "AR1", include_spatial = TRUE, time = "year",
+                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mcod1, conf.int = TRUE)
+
+d$residualsmcod1 <- residuals(mcod1)
+qqnorm(d$residualsmcod1); abline(a = 0, b = 1)
+
+# Save model
+saveRDS(mcod1, "output/mcod1.rds")
+# mcod1 <- readRDS("output/mcod1.rds")
 ```
 
 #### Only depth covariate
@@ -218,46 +220,34 @@ saveRDS(mcod2, "output/mcod2.rds")
 # mcod2 <- readRDS("output/mcod2.rds")
 ```
 
-#### No covariates
-
-```{r fit cod no covars, results='hide', cache=TRUE, message=FALSE}
-# mcod3 <- sdmTMB(density_cod ~ 1,
-#                data = d, spde = spde, family = tweedie(link = "log"),
-#                fields = "AR1", include_spatial = TRUE, time = "year",
-#                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
-#                control = sdmTMBcontrol(newton_steps = 1))
-# 
-# tidy(mcod3, conf.int = TRUE)
-# 
-# d$residualsmcod3 <- residuals(mcod3)
-# qqnorm(d$residualsmcod3); abline(a = 0, b = 1)
-```
-
 ### Flounder
-#### With all covariates
+#### With cod covariates
 
-```{r fit fle covariates and field, results='hide', cache=TRUE, message=FALSE}
-# mfle1 <- sdmTMB(density_fle ~ 1 + s(depth_sc) + s(oxy_sc) + s(temp_sc),
-#                 data = d, spde = spde, family = tweedie(link = "log"),
-#                 fields = "AR1", include_spatial = TRUE, time = "year",
-#                 spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
-#                 control = sdmTMBcontrol(newton_steps = 1))
-# 
-# tidy(mfle1, conf.int = TRUE)
-# 
-# d$residualsmfle1 <- residuals(mfle1)
-# qqnorm(d$residualsmfle1); abline(a = 0, b = 1)
-# 
-# # Check AR1 param
-# mflesd1 <- as.data.frame(summary(TMB::sdreport(mfle1$tmb_obj)))
-# mflesd1$Estimate[row.names(mflesd1) == "ar1_phi"]
-# mflesd1$Estimate[row.names(mflesd1) == "ar1_phi"] +
-#   c(-2, 2) * mflesd1$`Std. Error`[row.names(mflesd1) == "ar1_phi"]
+```{r fit fle covariates and field, cache=TRUE}
+mfle1 <- sdmTMB(density_fle ~ 1 + density_cod_sc*depth_sc + depth_sc_sq,
+                data = d, spde = spde, family = tweedie(link = "log"),
+                fields = "AR1", include_spatial = TRUE, time = "year",
+                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mfle1, conf.int = TRUE)
+
+d$residualsmfle1 <- residuals(mfle1)
+qqnorm(d$residualsmfle1); abline(a = 0, b = 1)
+
+saveRDS(mfle1, "output/mfle1.rds")
+# mfle1 <- readRDS("output/mfle1.rds")
+
+# Check AR1 param
+mflesd1 <- as.data.frame(summary(TMB::sdreport(mfle1$tmb_obj)))
+mflesd1$Estimate[row.names(mflesd1) == "ar1_phi"]
+mflesd1$Estimate[row.names(mflesd1) == "ar1_phi"] +
+  c(-2, 2) * mflesd1$`Std. Error`[row.names(mflesd1) == "ar1_phi"]
 ```
 
 #### Only depth covariate
 
-```{r fit fle depth covariate, results='hide', cache=TRUE, message=FALSE}
+```{r fit fle depth covariate, cache=TRUE}
 mfle2 <- sdmTMB(density_fle ~ 1 + s(depth_sc),
                 data = d, spde = spde, family = tweedie(link = "log"),
                 fields = "AR1", include_spatial = TRUE, time = "year",
@@ -273,24 +263,9 @@ saveRDS(mfle2, "output/mfle2.rds")
 # mfle2 <- readRDS("output/mfle2.rds")
 ```
 
-#### No covariates
-
-```{r fit fle no covars, results='hide', cache=TRUE, message=FALSE}
-# mfle3 <- sdmTMB(density_fle ~ 1,
-#                data = d, spde = spde, family = tweedie(link = "log"),
-#                fields = "AR1", include_spatial = TRUE, time = "year",
-#                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
-#                control = sdmTMBcontrol(newton_steps = 1))
-# 
-# tidy(mfle3, conf.int = TRUE)
-# 
-# d$residualsmfle3 <- residuals(mfle3)
-# qqnorm(d$residualsmfle3); abline(a = 0, b = 1)
-```
-
 ## Now fit a simple, spatial trend condition model with depth as a covariate
 
-```{r condition model with spatial trend, cache = TRUE}
+```{r condition model with spatial trend, cache=TRUE}
 dc <- readr::read_csv("https://raw.githubusercontent.com/maxlindmark/cod_condition/master/data/for_analysis/mdat_cond.csv")
 
 # Calculate standardized variables
@@ -336,7 +311,7 @@ predcondition <- predict(mcond, newdata = mutate(pred_grid2, ln_length_cm = 0))
 
 ## Plot spatial trend
 
-```{r spatial trends, cache=TRUE}
+```{r spatial trends}
 # Cod
 p1 <- plot_map_raster +
   geom_raster(data = filter(predcod, year == 1999), aes(x = X * 1000, y = Y * 1000, fill = zeta_s)) +
@@ -418,7 +393,7 @@ ggplot(d, aes(density_fle, density_cod)) +
   geom_point(alpha = 0.1)
 
 # The above plot however, contains rectangles where one species is not abundant, 
-# but the other could. Hence, this negative co-occurence
+# but the other could. Hence, this negative co-occurrence
 # Average densities across rectangles
 d_sum <- d %>% 
   group_by(ices_rect) %>% 
@@ -475,8 +450,6 @@ p4 <- plot_map_raster +
   theme_plot()
 
 (p1 | p2) / (p3 | p4)
-
-# ************************************* continue here!!!!
 
 # Now plot the same relationship between flounder and cod density
 d %>% 

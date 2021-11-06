@@ -185,36 +185,39 @@ colnames(d_wide)
 # some higher level group (or the same group), the sum of these is the total stomach content. 
 # Note that I have one group for unidentified clupeids, but also sprat and herring. So if I want the 
 # total of some aggregated group, then I need to add all the sub-groups.
+
+# CHECK all these are covered now that I also use old stomach data!
+
 d_wide2 <- d_wide %>% 
-  mutate(amphipoda_tot = bylgides_sarsi + hyperia_galba + gammarus_sp + monoporeia_affinis + 
+  mutate(amphipoda_tot = hyperia_galba + gammarus_sp + monoporeia_affinis + 
            corophium_volutator + amphipoda,
          bivalvia_tot = bivalvia + mytilus_sp + cerastoderma_glaucum + mya_arenaria + macoma_balthica + 
-           mytilus_edulis,
+           mytilus_edulis + limecola_balthica,
          clupeidae_tot = clupeidae + clupeidae_2,
-         sprattus_sprattus_tot = sprattus_sprattus + sprattus_sprattus_2,
          clupea_harengus_tot = clupea_harengus + clupea_harengus_2,
          gadus_morhua_tot = gadus_morhua,
          gadiformes_tot = gadidae + merlangius_merlangus,
          gobiidae_tot = gobiidae,
-         mysidae_tot = mysidae + neomysis_integer + mysis_mixta + mysida + gastrosacus,
+         mysidae_tot = mysis_relicta + mysidae + neomysis_integer + mysis_mixta + mysida + gastrosacus,
          non_bio_tot = stone + plastic + sand + wood + litter + carbon + stone_2 + carbon_2 + wood_2 + 
            litter_plastics + sand_2,
-         other_crustacea_tot = pontoporeia_femorata + crangon_crangon + idotea_balthica + 
+         other_crustacea_tot = pontoporeia_femorata + crangon_crangon + idotea_balthica + cumacea + 
            praunus_flexuosus + crustacea + diastylis_rathkei + palaemon_sp + palaemon_elegans + caridea +
            amphibalanus_improvisus + palaemonidae + carcinus_maenas + copepoda + calanoida + pontoporeiidae + decapoda, 
          other_tot = halicryptus_spinulosus + priapulus_caudatus + annelida + algae + priapulidae + waste +
            unidentified_mass + spine + empty + mollusca + na + remains + gastropoda + hydrobia_sp + 
-           priapulida + halicryptus + digestive_tract + mucus + remains_2 + pontoporeidae +
+           priapulida + halicryptus + digestive_tract + mucus + remains_2 + pontoporeidae + pontoporeia_sp + 
            halicryptus_spinolusus + priapulida_2 + prapulida,
-         other_pisces_tot = enchelyopus_cimbrius + trachurus_trachurus + gasterosteus_aculeatus + 
-           scales + pleuronectes_platessa + anguilla_anguilla + pungitius_pungitius + ammodytes_tobianus +
+         other_pisces_tot = pomatoschistus_minutus + pisces + pisces_eggs + enchelyopus_cimbrius + trachurus_trachurus +
+           gasterosteus_aculeatus + scales + pleuronectes_platessa + anguilla_anguilla + pungitius_pungitius + ammodytes_tobianus +
            cottidae + spinachia_spinachia + zoarces_viviparus + ammodytidae + myoxocephalus_quadricornis +
            hyperoplus_lanceolatus + pleuronectiformes + scophthalmus_maximus + neogobius_melanostomus + gobius_niger +
            pleuronectidae + gasterosteidae + belone_belone + agonus_cataphractus + myoxocephalus_scorpius,
          platichthys_flesus_tot = platichthys_flesus,
          polychaeta_tot = bylgides_sarsi + scoloplos_armiger + terebellides_stroemii + hediste_diversicolor + 
            phyllodocida + polychaeta + pectinaria_sp + nephtys_ciliata,
-         saduria_entomon_tot = saduria_entomon
+         saduria_entomon_tot = saduria_entomon,
+         sprattus_sprattus_tot = sprattus_sprattus + sprattus_sprattus_2
          )
 
 # 16 prey groups in total
@@ -324,7 +327,9 @@ Calculate response variables
 cod <- cod %>% 
   mutate(pred_weight_g = replace_na(pred_weight_g, -9),
          pred_weight_g = ifelse(pred_weight_g == -9, 0.01*pred_cm^3, pred_weight_g), 
-         FR_tot = (tot_prey_biom)/(pred_weight_g - tot_prey_biom), 
+         FR_tot = (tot_prey_biom)/(pred_weight_g - tot_prey_biom),
+         FR_sad = (saduria_entomon_tot)/(pred_weight_g - tot_prey_biom), # important I remove tot prey here!
+         FR_spr = (sprattus_sprattus_tot)/(pred_weight_g - tot_prey_biom), # important I remove tot prey here!
          prop_saduria = saduria_entomon_tot/tot_prey_biom,
          prop_common = (amphipoda_tot + clupea_harengus_tot + clupeidae_tot + other_crustacea_tot + 
                           other_pisces_tot + polychaeta_tot + saduria_entomon_tot + sprattus_sprattus_tot) / tot_prey_biom,
@@ -337,6 +342,8 @@ fle <- fle %>%
   mutate(pred_weight_g = replace_na(pred_weight_g, -9),
          pred_weight_g = ifelse(pred_weight_g == -9, 0.01*pred_cm^3, pred_weight_g), 
          FR_tot = (tot_prey_biom)/(pred_weight_g - tot_prey_biom), 
+         FR_sad = (saduria_entomon_tot)/(pred_weight_g - tot_prey_biom), # important I remove tot prey here!
+         FR_spr = (sprattus_sprattus_tot)/(pred_weight_g - tot_prey_biom), # important I remove tot prey here!
          prop_saduria = saduria_entomon_tot/tot_prey_biom,
          prop_common = (amphipoda_tot + clupea_harengus_tot + clupeidae_tot + other_crustacea_tot + 
                           other_pisces_tot + polychaeta_tot + saduria_entomon_tot + sprattus_sprattus_tot) / tot_prey_biom,
@@ -496,12 +503,12 @@ cod2 <- bind_rows(cod2, cod_old)
 ```{r save data}
 colnames(cod)
 
-cod_save <- cod2 %>% dplyr::select(FR_tot, saduria_entomon_tot, tot_prey_biom, common_tot, unique_pred_id,
+cod_save <- cod2 %>% dplyr::select(FR_tot, FR_sad, FR_spr, saduria_entomon_tot, tot_prey_biom, common_tot, unique_pred_id,
                                    year, quarter, time_period, quarter_fact, pred_weight_g, pred_cm,
                                    predator_spec, predcod_density, predfle_density, predcod_density_sc,
                                    predfle_density_sc, depth, X, Y, lat, long, ices_rect, cruise)
 
-fle_save <- fle2 %>% dplyr::select(FR_tot, saduria_entomon_tot, tot_prey_biom, common_tot, unique_pred_id,
+fle_save <- fle2 %>% dplyr::select(FR_tot, FR_sad, FR_spr, saduria_entomon_tot, tot_prey_biom, common_tot, unique_pred_id,
                                    year, quarter, pred_weight_g, pred_cm,
                                    predator_spec, predcod_density, predfle_density, predcod_density_sc,
                                    predfle_density_sc, depth, X, Y, lat, long, ices_rect, cruise)

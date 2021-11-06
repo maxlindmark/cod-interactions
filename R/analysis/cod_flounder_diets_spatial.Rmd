@@ -25,7 +25,7 @@ Fit density (also referred to as CPUE) model with environmental predictors and u
 
 ```{r lib, message=FALSE}
 # Load libraries, install if needed
-library(tidyverse); theme_set(theme_light(base_size = 10))
+library(tidyverse); theme_set(theme_classic(base_size = 10))
 library(readxl)
 library(tidylog)
 library(RCurl)
@@ -50,7 +50,7 @@ library(mapplots)
 library(EnvStats)
 library(qwraps2)
 #remotes::install_github("pbs-assess/sdmTMB")
-library(sdmTMB)# To load entire cache in interactive r session, do: qwraps2::lazyload_cache_dir(path = "R/analysis/spatial_trend_models_cache/html")
+library(sdmTMB)# To load entire cache in interactive r session, do: qwraps2::lazyload_cache_dir(path = "R/analysis/cod_flounder_diets_spatial_cache/html")
 ```
 
 ## For maps
@@ -120,125 +120,296 @@ LongLatToUTM <- function(x, y, zone){
 }
 ```
 
-## Try and fit sdmTMB models with densities as covariates... 
+## Read and plot data
 
-```{r sdmTMB models fitted to diet, cache=TRUE}
+```{r read and plot data}
+cod <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/cod_interactions/data/cod_diet_analysis.csv") %>% dplyr::select(-X1)
+
+cod <- cod %>%
+  mutate(year = as.integer(year),
+         quarter = as.factor(quarter),
+         depth2_sc = depth - mean(depth),
+         saduria_entomon_per_mass = saduria_entomon_tot/pred_weight_g,
+         tot_prey_biom_per_mass = tot_prey_biom/pred_weight_g,
+         depth_sc = (depth - mean(depth)) / sd(depth)) %>% 
+  filter(year > 2014)
+
+fle <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/cod_interactions/data/fle_diet_analysis.csv") %>% dplyr::select(-X1)
+
+fle <- fle %>%
+  mutate(year = as.integer(year),
+         quarter = as.factor(quarter),
+         depth2_sc = depth - mean(depth),
+         saduria_entomon_per_mass = saduria_entomon_tot/pred_weight_g,
+         tot_prey_biom_per_mass = tot_prey_biom/pred_weight_g,
+         depth_sc = (depth - mean(depth)) / sd(depth))
+```
+
+## Fit sdmTMB models with densities as covariates to stomach content data
+
+```{r make meshes, cache=TRUE}
 # Cod 
-pcod_spde <- make_mesh(cod_fr2, c("X", "Y"), n_knots = 150, type = "kmeans", seed = 42)
+pcod_spde <- make_mesh(cod, c("X", "Y"), n_knots = 150, type = "kmeans", seed = 42)
 plot(pcod_spde)
 
-pfle_spde <- make_mesh(fle_fr2, c("X", "Y"), n_knots = 70, type = "kmeans", seed = 42)
+pfle_spde <- make_mesh(fle, c("X", "Y"), n_knots = 70, type = "kmeans", seed = 42)
 plot(pfle_spde)
+```
 
-# (add small values if 0, subtract small values if 1) for Beta regressions
-cod_fr2 <- cod_fr2 %>%
-  mutate(saduria_entomon_per_mass = saduria_entomon_tot/pred_weight_g,
-         prop_saduria2 = ifelse(prop_saduria == 0, prop_saduria + 0.0001, prop_saduria),
-         prop_saduria2 = ifelse(prop_saduria == 1, prop_saduria - 0.0001, prop_saduria2))
+## Fit models of total content
 
-fle_fr2 <- fle_fr2 %>%
-  mutate(saduria_entomon_per_mass = saduria_entomon_tot/pred_weight_g,
-         prop_saduria2 = ifelse(prop_saduria == 0, prop_saduria + 0.0001, prop_saduria),
-         prop_saduria2 = ifelse(prop_saduria == 1, prop_saduria - 0.0001, prop_saduria2)) 
-
-# OK, proportion models look absolutely AWFUL. I will model stomach content with a tweedie instead
-
-# Proportion Saduria
-# mcodsad <- sdmTMB(
-#   data = cod_fr2, 
-#   formula = prop_saduria2 ~ 0 + as.factor(year) + predfle_density_sc + predcod_density_sc,
-#   time = "year", fields = "IID", spatial_only = FALSE, spde = pcod_spde, family = student(df = 5))
-
-mcodsad <- sdmTMB(
-  data = cod_fr2, 
-  formula = saduria_entomon_per_mass ~ 0 + as.factor(year) + s(predfle_density_sc) + s(predcod_density_sc),
+```{r model total stomach content, cache=TRUE}
+# Model total prey biomass 
+# Cod
+mcod <- sdmTMB(
+  data = cod, 
+  formula = tot_prey_biom_per_mass ~ 0 + quarter + as.factor(year) + predfle_density_sc*depth_sc + predcod_density_sc,
   time = "year", fields = "IID", spatial_only = FALSE, spde = pcod_spde, family = tweedie())
 
-cod_fr2$resids_mcodsad <- residuals(mcodsad) # randomized quantile residuals
-hist(cod_fr2$resids_mcodsad)
-qqnorm(cod_fr2$resids_mcodsad); abline(a = 0, b = 1)
+tidy(mcod)
+summary(mcod)
+
+cod$resids_mcod <- residuals(mcod) # randomized quantile residuals
+qqnorm(cod$resids_mcod); abline(a = 0, b = 1)
+
+# Flounder
+mfle <- sdmTMB(
+  data = fle, 
+  formula = tot_prey_biom_per_mass ~ 0 + as.factor(year) + predfle_density_sc + predcod_density_sc*depth_sc,
+  time = "year", fields = "IID", spatial_only = FALSE, spde = pfle_spde, family = tweedie())
+
+tidy(mfle)
+summary(mfle)
+
+fle$resids_mfle <- residuals(mfle) # randomized quantile residuals
+qqnorm(fle$resids_mfle); abline(a = 0, b = 1)
+```
+
+## Fit models of saduria content
+
+```{r model saduria biomass in stomach, cache=TRUE}
+# Model Saduria contents 
+# Cod
+mcodsad <- sdmTMB(
+  data = cod, 
+  formula = saduria_entomon_per_mass ~ 0 + quarter + as.factor(year) + predfle_density_sc*depth_sc + predcod_density_sc,
+  time = "year", fields = "IID", spatial_only = FALSE, spde = pcod_spde, family = tweedie())
 
 tidy(mcodsad)
 summary(mcodsad)
 
+cod$resids_mcodsad <- residuals(mcodsad) # randomized quantile residuals
+qqnorm(cod$resids_mcodsad); abline(a = 0, b = 1)
+
+# Flounder
 mflesad <- sdmTMB(
-  data = fle_fr2, 
-  formula = saduria_entomon_per_mass ~ 0 + as.factor(year) + s(predfle_density_sc) + s(predcod_density_sc),
+  data = fle, 
+  formula = saduria_entomon_per_mass ~ 0 + as.factor(year) + predfle_density_sc + predcod_density_sc*depth_sc,
   time = "year", fields = "IID", spatial_only = FALSE, spde = pfle_spde, family = tweedie())
 
 tidy(mflesad)
 summary(mflesad)
 
-fle_fr2$resids_mflesad <- residuals(mflesad) # randomized quantile residuals
-hist(fle_fr2$resids_mflesad)
-qqnorm(fle_fr2$resids_mflesad); abline(a = 0, b = 1)
+fle$resids_mflesad <- residuals(mflesad) # randomized quantile residuals
+qqnorm(fle$resids_mflesad); abline(a = 0, b = 1)
+```
 
-# Plot marginal effects
-## Flounder
+## Calculate and plot marginal effects
+#### Cod
+
+```{r calculate marginal effects for cod models}
 # Flounder density
-nd_fle_fle <- data.frame(predfle_density_sc = seq(min(fle_fr2$predfle_density_sc),
-                                                  max(fle_fr2$predfle_density_sc), length.out = 100))
+nd_cod_fle <- data.frame(predfle_density_sc = seq(min(cod$predfle_density_sc),
+                                                  max(cod$predfle_density_sc), length.out = 100))
+
+nd_cod_fle$year <- 2018L
+nd_cod_fle$predcod_density_sc <- 0
+nd_cod_fle$depth_sc <- 0
+nd_cod_fle$quarter <- factor(1)
+
+sad_pred_cod_fle <- predict(mcodsad, newdata = nd_cod_fle, se_fit = TRUE, re_form = NA)
+tot_pred_cod_fle <- predict(mcod, newdata = nd_cod_fle, se_fit = TRUE, re_form = NA)
+
+
+# Cod density
+nd_cod_cod <- data.frame(predcod_density_sc = seq(min(cod$predcod_density_sc),
+                                                  max(cod$predcod_density_sc), length.out = 100))
+
+nd_cod_cod$year <- 2018L
+nd_cod_cod$predfle_density_sc <- 0
+nd_cod_cod$depth_sc <- 0
+nd_cod_cod$quarter <- factor(1)
+
+sad_pred_cod_cod <- predict(mcodsad, newdata = nd_cod_cod, se_fit = TRUE, re_form = NA)
+tot_pred_cod_cod <- predict(mcod, newdata = nd_cod_cod, se_fit = TRUE, re_form = NA)
+```
+
+#### Flounder
+
+```{r calculate marginal effects for flounder models}
+# Flounder density
+nd_fle_fle <- data.frame(predfle_density_sc = seq(min(fle$predfle_density_sc),
+                                                  max(fle$predfle_density_sc), length.out = 100))
 
 nd_fle_fle$year <- 2018L
 nd_fle_fle$predcod_density_sc <- 0
+nd_fle_fle$depth_sc <- 0
+
+sad_pred_fle_fle <- predict(mflesad, newdata = nd_fle_fle, se_fit = TRUE, re_form = NA)
+tot_pred_fle_fle <- predict(mfle, newdata = nd_fle_fle, se_fit = TRUE, re_form = NA)
+
+# Cod density
+nd_fle_cod <- data.frame(predcod_density_sc = seq(min(fle$predcod_density_sc),
+                                                  max(fle$predcod_density_sc), length.out = 100))
+
+nd_fle_cod$year <- 2018L
+nd_fle_cod$predfle_density_sc <- 0
+nd_fle_cod$depth_sc <- 0
+
+sad_pred_fle_cod <- predict(mflesad, newdata = nd_fle_cod, se_fit = TRUE, re_form = NA)
+tot_pred_fle_cod <- predict(mfle, newdata = nd_fle_cod, se_fit = TRUE, re_form = NA)
+```
+
+#### Plot marginal effects
+
+```{r plot marginal effects}
+# Saduria models
+p1 <- ggplot(sad_pred_fle_fle, aes(predfle_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) +
+  coord_cartesian(ylim = c(0, 0.015), expand = 0) + 
+  labs(y = "Saduria in flounder stomach [g/g]", x = "")
+
+p2 <- ggplot(sad_pred_fle_cod, aes(predcod_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) + 
+  coord_cartesian(ylim = c(0, 0.015), expand = 0) + 
+  labs(y = "", x = "")
+
+p3 <- ggplot(sad_pred_cod_fle, aes(predfle_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) +
+  labs(y = "Saduria in cod stomach [g/g]", x = "Scaled flounder density")
+
+p4 <- ggplot(sad_pred_cod_cod, aes(predcod_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) + 
+  labs(y = "", x = "Scaled cod density")
+
+p1 + p2 + p3 + p4 + plot_layout(ncol = 2)
+
+ggsave("figures/marginal_effects_saduria.png", width = 6.5, height = 6.5, dpi = 600)
+
+# Total stomach content models
+p5 <- ggplot(tot_pred_fle_fle, aes(predfle_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) +
+  coord_cartesian(ylim = c(0, 0.033), expand = 0) + 
+  labs(y = "Prey biomass in flounder stomach [g/g]", x = "")
+
+p6 <- ggplot(tot_pred_fle_cod, aes(predcod_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) + 
+  coord_cartesian(ylim = c(0, 0.033), expand = 0) + 
+  labs(y = "", x = "")
+
+p7 <- ggplot(tot_pred_cod_fle, aes(predfle_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) +
+  coord_cartesian(ylim = c(0, 0.028), expand = 0) + 
+  labs(y = "Prey biomass in cod stomach [g/g]", x = "Scaled flounder density")
+
+p8 <- ggplot(tot_pred_cod_cod, aes(predcod_density_sc, exp(est),
+  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
+  geom_line() + geom_ribbon(alpha = 0.4) + 
+  coord_cartesian(ylim = c(0, 0.028), expand = 0) + 
+  labs(y = "", x = "Scaled cod density")
+
+p5 + p6 + p7 + p8 + plot_layout(ncol = 2)
+
+ggsave("figures/marginal_effects_total.png", width = 6.5, height = 6.5, dpi = 600)
+```
+
+## No do the same for total stomach contents
+
+```{r plot marginal effects for full stomach content}
+## Flounder
+# Flounder density
+nd_fle_fle <- data.frame(predfle_density_sc = seq(min(fle$predfle_density_sc),
+                                                  max(fle$predfle_density_sc), length.out = 100))
+
+nd_fle_fle$year <- 2018L
+nd_fle_fle$predcod_density_sc <- 0
+nd_fle_fle$depth_sc <- 0
 
 pred_fle_fle <- predict(mflesad, newdata = nd_fle_fle, se_fit = TRUE, re_form = NA)
 
 p1 <- ggplot(pred_fle_fle, aes(predfle_density_sc, exp(est),
   ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
   geom_line() + geom_ribbon(alpha = 0.4) +
-  theme_classic(base_size = 14) + 
-  ggtitle("Fle stomach, flounder margin")
+  coord_cartesian(ylim = c(0, 0.015), expand = 0) + 
+  labs(y = "Saduria in stomach [g/g]", x = "")
 
 # Cod density
-nd_fle_cod <- data.frame(predcod_density_sc = seq(min(fle_fr2$predcod_density_sc),
-                                                  max(fle_fr2$predcod_density_sc), length.out = 100))
+nd_fle_cod <- data.frame(predcod_density_sc = seq(min(fle$predcod_density_sc),
+                                                  max(fle$predcod_density_sc), length.out = 100))
 
 nd_fle_cod$year <- 2018L
 nd_fle_cod$predfle_density_sc <- 0
+nd_fle_cod$depth_sc <- 0
 
 pred_fle_cod <- predict(mflesad, newdata = nd_fle_cod, se_fit = TRUE, re_form = NA)
 
 p2 <- ggplot(pred_fle_cod, aes(predcod_density_sc, exp(est),
   ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
   geom_line() + geom_ribbon(alpha = 0.4) + 
-  theme_classic(base_size = 14) +
-  ggtitle("Fle stomach, cod margin")
+  coord_cartesian(ylim = c(0, 0.015), expand = 0) + 
+  labs(y = "", x = "")
 
-flemargin <- p1 + p2 + plot_annotation(title = "Flounder marginal effects",
-                                       theme = theme(plot.title = element_text(size = 16)))
+flemargin <- p1 + p2 + plot_annotation(title = "",
+                                       theme = theme(plot.title = element_text(size = 16, hjust = 0.5)))
 
 ## Cod
 # Flounder density
-nd_cod_fle <- data.frame(predfle_density_sc = seq(min(cod_fr2$predfle_density_sc),
-                                                  max(cod_fr2$predfle_density_sc), length.out = 100))
+nd_cod_fle <- data.frame(predfle_density_sc = seq(min(cod$predfle_density_sc),
+                                                  max(cod$predfle_density_sc), length.out = 100))
 
 nd_cod_fle$year <- 2018L
 nd_cod_fle$predcod_density_sc <- 0
+nd_cod_fle$depth_sc <- 0
+nd_cod_fle$quarter <- factor(1)
 
 pred_cod_fle <- predict(mcodsad, newdata = nd_cod_fle, se_fit = TRUE, re_form = NA)
 
 p3 <- ggplot(pred_cod_fle, aes(predfle_density_sc, exp(est),
   ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
   geom_line() + geom_ribbon(alpha = 0.4) +
-  theme_classic(base_size = 14) +
-  ggtitle("Cod stomach, flounder margin")
+  labs(y = "Saduria in stomach [g/g]", x = "Scaled flounder density")
 
 # Cod density
-nd_cod_cod <- data.frame(predcod_density_sc = seq(min(cod_fr2$predcod_density_sc),
-                                                  max(cod_fr2$predcod_density_sc), length.out = 100))
+nd_cod_cod <- data.frame(predcod_density_sc = seq(min(cod$predcod_density_sc),
+                                                  max(cod$predcod_density_sc), length.out = 100))
 
 nd_cod_cod$year <- 2018L
 nd_cod_cod$predfle_density_sc <- 0
+nd_cod_cod$depth_sc <- 0
+nd_cod_cod$quarter <- factor(1)
 
 pred_cod_cod <- predict(mcodsad, newdata = nd_cod_cod, se_fit = TRUE, re_form = NA)
 
 p4 <- ggplot(pred_cod_cod, aes(predcod_density_sc, exp(est),
   ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
   geom_line() + geom_ribbon(alpha = 0.4) + 
-  theme_classic(base_size = 14) +
-  ggtitle("Cod stomach, cod margin")
+  labs(y = "", x = "Scaled cod density")
 
+codmargin <- p3 + p4 + plot_annotation(title = "Cod marginal effects",
+                                       theme = theme(plot.title = element_text(size = 16, hjust = 0.5)))
 
-(p1 | p2) / (p3 | p4 )
+flemargin / codmargin # Add silhouettes here?
+
+ggsave("figures/margina_saduria.png", width = 6.5, height = 6.5, dpi = 600)
+```
+
+```{r}
+knitr::knit_exit()
 ```
