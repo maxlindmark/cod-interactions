@@ -28,9 +28,9 @@ vignettes/*.pdf
 /R/guides/
 
 # html files
-/R/analysis/cod_flounder_diets.html
-/R/analysis/cpue_model.html
-/R/analysis/density_spatial_trend_models.html
+R/analysis/cod_flounder_diets.html
+R/analysis/cpue_model.html
+R/analysis/density_spatial_trend_models.html
 
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
