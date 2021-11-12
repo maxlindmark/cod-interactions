@@ -27,9 +27,12 @@ vignettes/*.pdf
 # Guides
 /R/guides/
 
+# Large data files
+/data/depth_geo_tif/
+/data/ICES_StatRec_mapto_ICES_Areas/
+
 # html files
 /R/analysis/cod_flounder_diets.html
-/R/analysis/cpue_model.html
 /R/analysis/density_spatial_trend_models.html
 
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
