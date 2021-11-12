@@ -33,6 +33,7 @@ vignettes/*.pdf
 
 # Large model output files
 /output/
+output/
 
 # html files
 /R/analysis/cod_flounder_diets.html
