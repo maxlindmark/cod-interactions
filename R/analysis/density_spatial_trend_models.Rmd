@@ -138,13 +138,17 @@ d <- d %>%
          temp_sc = temp,
          depth_sc = depth,
          density_cod_sc = density_cod,
-         density_fle_sc = density_fle
+         density_fle_sc = density_fle,
+         quarter = factor(quarter)
          ) %>%
   mutate_at(c("oxy_sc", "temp_sc", "depth_sc", "density_cod_sc", "density_fle_sc"),
             ~(scale(.) %>% as.vector)) %>% 
   mutate(year = as.integer(year),
          depth_sc_sq = depth_sc*depth_sc,) %>% 
-  drop_na(oxy, depth, temp)
+  drop_na(depth)
+
+d1 <- d %>% filter(quarter == 1)
+d4 <- d %>% filter(quarter == 4)
 ```
 
 ## Read the prediction grids
@@ -161,22 +165,31 @@ pred_grid2 <- pred_grid2 %>%
          depth_sc_sq = depth_sc*depth_sc,
          temp_sc = (temp - mean(d$temp))/sd(d$temp),
          oxy_sc = (oxy - mean(d$oxy))/sd(d$oxy)) %>% # Need to scale these to the mean and sd in the data!
-  drop_na(oxy, depth, temp)
+  drop_na(depth)
 
 # Add ices_rect
 pred_grid2$ices_rect <- ices.rect2(pred_grid2$lon, pred_grid2$lat) 
+
+pred_grid2_q1 <- pred_grid2 %>% mutate(quarter = factor(1))
+pred_grid2_q4 <- pred_grid2 %>% mutate(quarter = factor(4))
 ```
 
 ## Make spde mesh
 
 ```{r make barrier spde mesh, results='hide', cache=TRUE, message=FALSE}
-spde <- make_mesh(d, xy_cols = c("X", "Y"),
-                  n_knots = 100, 
-                  type = "kmeans", seed = 42)
+spde_q1 <- make_mesh(d1, xy_cols = c("X", "Y"),
+                     n_knots = 100, type = "kmeans", seed = 42)
+
+spde_q4 <- make_mesh(d4, xy_cols = c("X", "Y"),
+                     n_knots = 100, type = "kmeans", seed = 42)
 
 # Plot and save spde
-png(file = "figures/supp/density_spde.png", units = "in", width = 6.5, height = 6.5, res = 300)
-plot(spde)
+png(file = "figures/supp/density_spde_q1.png", units = "in", width = 6.5, height = 6.5, res = 300)
+plot(spde_q1)
+dev.off()
+
+png(file = "figures/supp/density_spde_q4.png", units = "in", width = 6.5, height = 6.5, res = 300)
+plot(spde_q4)
 dev.off()
 ```
 
@@ -184,83 +197,163 @@ dev.off()
 ### Cod
 #### With flounder covariates
 
-```{r fit cod covariates and field, results='hide', cache=TRUE, message=FALSE}
-mcod1 <- sdmTMB(density_cod ~ 1 + density_fle_sc*depth_sc + depth_sc_sq,
-                data = d, spde = spde, family = tweedie(link = "log"),
-                fields = "AR1", include_spatial = TRUE, time = "year",
-                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
-                control = sdmTMBcontrol(newton_steps = 1))
+```{r fit cod covariates and field q1, message=FALSE, cache=TRUE}
+mcod1_q1 <- sdmTMB(density_cod ~ 1 + density_fle_sc + s(depth_sc),
+                   data = d1, spde = spde_q1,
+                   family = tweedie(link = "log"),
+                   fields = "AR1", include_spatial = TRUE, time = "year",
+                   spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                   control = sdmTMBcontrol(newton_steps = 1))
 
-tidy(mcod1, conf.int = TRUE)
+tidy(mcod1_q1, conf.int = TRUE)
 
-d$residualsmcod1 <- residuals(mcod1)
-qqnorm(d$residualsmcod1); abline(a = 0, b = 1)
+d1$residualsmcod1_q1 <- residuals(mcod1_q1)
+qqnorm(d1$residualsmcod1_q1); abline(a = 0, b = 1)
 
 # Save model
-saveRDS(mcod1, "output/mcod1.rds")
-# mcod1 <- readRDS("output/mcod1.rds")
+saveRDS(mcod1_q1, "output/mcod1_q1.rds")
+# mcod1_q1 <- readRDS("output/mcod1_q1.rds")
+
+# Check AR1 param
+mcodsd1_q1 <- as.data.frame(summary(TMB::sdreport(mcod1_q1$tmb_obj)))
+mcodsd1_q1$Estimate[row.names(mcodsd1_q1) == "ar1_phi"]
+mcodsd1_q1$Estimate[row.names(mcodsd1_q1) == "ar1_phi"] +
+  c(-2, 2) * mcodsd1_q1$`Std. Error`[row.names(mcodsd1_q1) == "ar1_phi"]
+```
+
+```{r fit cod covariates and field q4, results='hide', cache=TRUE, message=FALSE}
+mcod1_q4 <- sdmTMB(density_cod ~ 1 + density_fle_sc + s(depth_sc),
+                   data = d4, spde = spde_q4,
+                   family = tweedie(link = "log"),
+                   fields = "AR1", include_spatial = TRUE, time = "year",
+                   spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                   control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mcod1_q4, conf.int = TRUE)
+
+d4$residualsmcod1_q4 <- residuals(mcod1_q4)
+qqnorm(d4$residualsmcod1_q4); abline(a = 0, b = 1)
+
+# Save model
+saveRDS(mcod1_q4, "output/mcod1_q4.rds")
+# mcod1_q4 <- readRDS("output/mcod1_q4.rds")
 ```
 
 #### Only depth covariate
 
-```{r fit cod depth covariate, results='hide', cache=TRUE, message=FALSE}
-mcod2 <- sdmTMB(density_cod ~ 1 + s(depth_sc),
-                data = d, spde = spde, family = tweedie(link = "log"),
-                fields = "AR1", include_spatial = TRUE, time = "year",
-                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
-                control = sdmTMBcontrol(newton_steps = 1))
+```{r fit cod depth covariate q1, results='hide', cache=TRUE, message=FALSE}
+mcod2_q1 <- sdmTMB(density_cod ~ 1 + s(depth_sc),
+                   data = d1, spde = spde_q1,
+                   family = tweedie(link = "log"),
+                   fields = "AR1", include_spatial = TRUE, time = "year",
+                   spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                   control = sdmTMBcontrol(newton_steps = 1))
 
-tidy(mcod2, conf.int = TRUE)
+tidy(mcod2_q1, conf.int = TRUE)
 
-d$residualsmcod2 <- residuals(mcod2)
-qqnorm(d$residualsmcod2); abline(a = 0, b = 1)
+d1$residualsmcod2_q1 <- residuals(mcod2_q1)
+qqnorm(d1$residualsmcod2_q1); abline(a = 0, b = 1)
 
 # Save model
-saveRDS(mcod2, "output/mcod2.rds")
-# mcod2 <- readRDS("output/mcod2.rds")
+saveRDS(mcod2_q1, "output/mcod2_q1.rds")
+# mcod2_q1 <- readRDS("output/mcod2_q1.rds")
+```
+
+```{r fit cod depth covariate q4, results='hide', cache=TRUE, message=FALSE}
+mcod2_q4 <- sdmTMB(density_cod ~ 1 + s(depth_sc),
+                   data = d4, spde = spde_q4,
+                   family = tweedie(link = "log"),
+                   fields = "AR1", include_spatial = TRUE, time = "year",
+                   spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                   control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mcod2_q4, conf.int = TRUE)
+
+d4$residualsmcod2_q4 <- residuals(mcod2_q4)
+qqnorm(d4$residualsmcod2_q4); abline(a = 0, b = 1)
+
+# Save model
+saveRDS(mcod2_q4, "output/mcod2_q4.rds")
+# mcod2_q4 <- readRDS("output/mcod2_q4.rds")
 ```
 
 ### Flounder
 #### With cod covariates
 
-```{r fit fle covariates and field, cache=TRUE}
-mfle1 <- sdmTMB(density_fle ~ 1 + density_cod_sc*depth_sc + depth_sc_sq,
-                data = d, spde = spde, family = tweedie(link = "log"),
-                fields = "AR1", include_spatial = TRUE, time = "year",
-                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
-                control = sdmTMBcontrol(newton_steps = 1))
+```{r fit fle covariates and field q1, cache=TRUE}
+mfle1_q1 <- sdmTMB(density_fle ~ 1 + density_cod_sc + s(depth_sc),
+                   data = d1, spde = spde_q1,
+                   family = tweedie(link = "log"),
+                   fields = "AR1", include_spatial = TRUE, time = "year",
+                   spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                   control = sdmTMBcontrol(newton_steps = 1))
 
-tidy(mfle1, conf.int = TRUE)
+tidy(mfle1_q1, conf.int = TRUE)
 
-d$residualsmfle1 <- residuals(mfle1)
-qqnorm(d$residualsmfle1); abline(a = 0, b = 1)
+d1$residualsmfle1_q1 <- residuals(mfle1_q1)
+qqnorm(d1$residualsmfle1_q1); abline(a = 0, b = 1)
 
-saveRDS(mfle1, "output/mfle1.rds")
-# mfle1 <- readRDS("output/mfle1.rds")
+saveRDS(mfle1_q1, "output/mfle1_q1.rds")
+# mfle1_q1 <- readRDS("output/mfle1_q1.rds")
 
 # Check AR1 param
-mflesd1 <- as.data.frame(summary(TMB::sdreport(mfle1$tmb_obj)))
-mflesd1$Estimate[row.names(mflesd1) == "ar1_phi"]
-mflesd1$Estimate[row.names(mflesd1) == "ar1_phi"] +
-  c(-2, 2) * mflesd1$`Std. Error`[row.names(mflesd1) == "ar1_phi"]
+mflesd1_q1 <- as.data.frame(summary(TMB::sdreport(mfle1_q1$tmb_obj)))
+mflesd1_q1$Estimate[row.names(mflesd1_q1) == "ar1_phi"]
+mflesd1_q1$Estimate[row.names(mflesd1_q1) == "ar1_phi"] +
+  c(-2, 2) * mflesd1_q1$`Std. Error`[row.names(mflesd1_q1) == "ar1_phi"]
+```
+
+```{r fit fle covariates and field q4, cache=TRUE}
+mfle1_q4 <- sdmTMB(density_fle ~ 1 + density_cod_sc + s(depth_sc),
+                   data = d4, spde = spde_q4,
+                   family = tweedie(link = "log"),
+                   fields = "AR1", include_spatial = TRUE, time = "year",
+                   spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                   control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mfle1_q4, conf.int = TRUE)
+
+d4$residualsmfle1_q4 <- residuals(mfle1_q4)
+qqnorm(d4$residualsmfle1_q4); abline(a = 0, b = 1)
+
+saveRDS(mfle1_q4, "output/mfle1_q4.rds")
+# mfle1_q4 <- readRDS("output/mfle1_q4.rds")
 ```
 
 #### Only depth covariate
 
-```{r fit fle depth covariate, cache=TRUE}
-mfle2 <- sdmTMB(density_fle ~ 1 + s(depth_sc),
-                data = d, spde = spde, family = tweedie(link = "log"),
+```{r fit fle depth covariate q1, cache=TRUE}
+mfle2_q1 <- sdmTMB(density_fle ~ 1 + s(depth_sc),
+                data = d1, spde = spde_q1,
+                family = tweedie(link = "log"),
                 fields = "AR1", include_spatial = TRUE, time = "year",
                 spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
                 control = sdmTMBcontrol(newton_steps = 1))
 
-tidy(mfle2, conf.int = TRUE)
+tidy(mfle2_q1, conf.int = TRUE)
 
-d$residualsmfle2 <- residuals(mfle2)
-qqnorm(d$residualsmfle2); abline(a = 0, b = 1)
+d1$residualsmfle2_q1 <- residuals(mfle2_q1)
+qqnorm(d1$residualsmfle2_q1); abline(a = 0, b = 1)
 
-saveRDS(mfle2, "output/mfle2.rds")
-# mfle2 <- readRDS("output/mfle2.rds")
+saveRDS(mfle2_q1, "output/mfle2_q1.rds")
+# mfle2_q1 <- readRDS("output/mfle2_q1.rds")
+```
+
+```{r fit fle depth covariate q4, cache=TRUE}
+mfle2_q4 <- sdmTMB(density_fle ~ 1 + s(depth_sc),
+                data = d4, spde = spde_q4,
+                family = tweedie(link = "log"),
+                fields = "AR1", include_spatial = TRUE, time = "year",
+                spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
+                control = sdmTMBcontrol(newton_steps = 1))
+
+tidy(mfle2_q4, conf.int = TRUE)
+
+d4$residualsmfle2_q4 <- residuals(mfle2_q4)
+qqnorm(d4$residualsmfle2_q4); abline(a = 0, b = 1)
+
+saveRDS(mfle2_q4, "output/mfle2_q4.rds")
+# mfle2_q4 <- readRDS("output/mfle2_q4.rds")
 ```
 
 ## Now fit a simple, spatial trend condition model with depth as a covariate
@@ -286,7 +379,7 @@ plot(spde)
 dev.off()
 
 # Fit model
-mcond <- sdmTMB(ln_weight_g ~ 1 + ln_length_cm + s(depth_sc) ,
+mcond <- sdmTMB(ln_weight_g ~ 1 + ln_length_cm + s(depth_sc),
                 data = dc, spde = spde, student(link = "identity", df = 5),
                 fields = "AR1", include_spatial = TRUE, time = "year",
                 spatial_only = FALSE, spatial_trend = TRUE, reml = FALSE,
@@ -297,6 +390,40 @@ dc$residuals_mcond <- residuals(mcond)
 png(file = "figures/supp/condition_qq.png", units = "in", width = 6.5, height = 6.5, res = 300)
 qqnorm(dc$residuals_mcond); abline(a = 0, b = 1)
 dev.off()
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+## Plot effect sizes of full models
+```{r effect sizes}
+mfle1_q1_ef <- tidy(mfle1_q1, effects = "fixed", conf.int = TRUE) %>% 
+  mutate(Quarter = 1, Species = "Flounder")
+
+mfle1_q4_ef <- tidy(mfle1_q4, effects = "fixed", conf.int = TRUE) %>% 
+  mutate(Quarter = 4, Species = "Flounder")
+
+mcod1_q1_ef <- tidy(mcod1_q1, effects = "fixed", conf.int = TRUE) %>% 
+  mutate(Quarter = 1, Species = "Cod")
+
+mcod1_q4_ef <- tidy(mcod1_q4, effects = "fixed", conf.int = TRUE) %>% 
+  mutate(Quarter = 4, Species = "Cod")
+
+plot_df <- bind_rows(mfle1_q1_ef, mfle1_q4_ef, mcod1_q1_ef, mcod1_q4_ef)
+
+# Plot effects
+ggplot(filter(plot_df, !term == "(Intercept)"),
+       aes(term, estimate, color = factor(Species))) +
+  geom_hline(yintercept = 0, linetype = 2, color = "red", alpha = 0.5) +
+  geom_point(size = 3, position = position_dodge(width = 0.2)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.1,
+                position = position_dodge(width = 0.2), size = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(x = "Density", y = "Standardized coefficient", color = "Quarter") +
+  theme_light(base_size = 12) + 
+  facet_wrap(~Quarter) +
+  theme(axis.text.x = element_text(angle = 0))
 ```
 
 ## Predict density models on grid
@@ -723,3 +850,6 @@ plot_map_raster +
 ggsave("figures/supp/density/omega_s_map.png", width = 6.5, height = 6.5, dpi = 600)
 ```
 
+```{r}
+knitr::knit_exit()
+```

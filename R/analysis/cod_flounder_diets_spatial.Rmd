@@ -49,8 +49,11 @@ library(rnaturalearthdata)
 library(mapplots)
 library(EnvStats)
 library(qwraps2)
+library(bayesplot)
+library(tidybayes)
+library(brms)
 #remotes::install_github("pbs-assess/sdmTMB")
-library(sdmTMB)# To load entire cache in interactive r session, do: qwraps2::lazyload_cache_dir(path = "R/analysis/cod_flounder_diets_spatial_cache/html")
+library(sdmTMB) # To load entire cache in interactive r session, do: qwraps2::lazyload_cache_dir(path = "R/analysis/cod_flounder_diets_spatial_cache/html")
 ```
 
 ## For maps
@@ -118,11 +121,22 @@ LongLatToUTM <- function(x, y, zone){
   res <- spTransform(xy, CRS(paste("+proj=utm +zone=",zone," ellps=WGS84",sep='')))
   return(as.data.frame(res))
 }
+
+theme_clean <- function() {
+  theme_minimal(base_family = "Barlow Semi Condensed") +
+    theme(panel.grid.minor = element_blank(),
+          plot.title = element_text(family = "BarlowSemiCondensed-Bold"),
+          axis.title = element_text(family = "BarlowSemiCondensed-Medium"),
+          strip.text = element_text(family = "BarlowSemiCondensed-Bold",
+                                    size = rel(1), hjust = 0),
+          strip.background = element_rect(fill = "grey80", color = NA))
+}
 ```
 
 ## Read and plot data
 
 ```{r read and plot data}
+# These data are for total and prey specific stomach models
 cod <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/cod_interactions/data/cod_diet_analysis.csv") %>% dplyr::select(-X1)
 
 cod <- cod %>%
@@ -132,7 +146,10 @@ cod <- cod %>%
          saduria_entomon_per_mass = saduria_entomon_tot/pred_weight_g,
          tot_prey_biom_per_mass = tot_prey_biom/pred_weight_g,
          depth_sc = (depth - mean(depth)) / sd(depth)) %>% 
-  filter(year > 2014)
+  filter(year > 2014) %>%
+  filter(!quarter == 2) %>% 
+  drop_na(predfle_density_sc, predcod_density_sc) %>% 
+  droplevels()
 
 fle <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/cod_interactions/data/fle_diet_analysis.csv") %>% dplyr::select(-X1)
 
@@ -142,12 +159,334 @@ fle <- fle %>%
          depth2_sc = depth - mean(depth),
          saduria_entomon_per_mass = saduria_entomon_tot/pred_weight_g,
          tot_prey_biom_per_mass = tot_prey_biom/pred_weight_g,
-         depth_sc = (depth - mean(depth)) / sd(depth))
+         depth_sc = (depth - mean(depth)) / sd(depth)) %>% 
+  filter(!quarter == 2) %>% 
+  drop_na(predfle_density_sc, predcod_density_sc) %>% 
+  droplevels()
+
+# These data are for the diet analysis (all prey groups)
+cod_prey <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/cod_interactions/data/pca_cod_diet_analysis.csv") %>% dplyr::select(-X1) %>% mutate(species = "COD") %>% filter(year > 2014) %>% filter(!quarter == 2) %>% droplevels()
+
+fle_prey <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/cod_interactions/data/pca_fle_diet_analysis.csv") %>% dplyr::select(-X1) %>% mutate(species = "FLE") %>% filter(!quarter == 2) %>% droplevels()
+
 ```
 
-## Fit sdmTMB models with densities as covariates to stomach content data
+## Read the prediction grids
 
-```{r make meshes, cache=TRUE}
+```{r read and process prediction grid, message=FALSE, warning=FALSE}
+# And now read in pred_grid2 which has oxygen values at location and time and depth:
+pred_grid2 <- readr::read_csv("https://raw.githubusercontent.com/maxlindmark/cod_condition/master/data/for_analysis/pred_grid2.csv") ### CHANGE TO OUR NEW PRED GRID
+
+# Clean
+pred_grid2 <- pred_grid2 %>%
+  mutate(year = as.integer(year)) %>% 
+  drop_na(depth)
+
+# Add ices_rect
+pred_grid2$ices_rect <- ices.rect2(pred_grid2$lon, pred_grid2$lat) 
+
+# pred_grid2_q1 <- pred_grid2 %>% mutate(quarter = factor(1))
+# pred_grid2_q4 <- pred_grid2 %>% mutate(quarter = factor(4))
+```
+
+## Calculate Schoener's overlap index for diet
+
+```{r explore and calculate diet indicites}
+# Plot data in space
+plot_map_raster +
+  geom_point(data = fle_prey, aes(x = X * 1000, y = Y * 1000, color = "FLE"), alpha = 0.5) +
+  geom_point(data = cod_prey, aes(x = X * 1000, y = Y * 1000, color = "COD"), alpha = 0.5) +
+  theme_plot()
+
+cod_prey <- cod_prey %>% filter(lat < 58)
+fle_prey <- fle_prey %>% filter(lat < 58)
+
+# Reformat data to calculate Schoeners overlap index
+# colnames(fle_prey)
+fle_prey_long <- fle_prey %>%
+  pivot_longer(14:29) %>% 
+  group_by(name, year, quarter, ices_rect) %>% # ices rect?
+  summarise(fle_diet = sum(value)) %>% 
+  arrange(name, year, ices_rect) %>%
+  ungroup() %>% 
+  group_by(year, quarter, ices_rect) %>%
+  mutate(fle_diet_tot = sum(fle_diet),
+         fle_diet_prop = fle_diet / fle_diet_tot) %>% 
+  ungroup()
+
+fle_prey_wide <- fle_prey_long %>%
+  pivot_wider(names_from = name, values_from = fle_diet_prop, values_fill = 0)
+
+cod_prey_long <- cod_prey %>%
+  pivot_longer(14:29) %>% 
+  group_by(name, year, quarter, ices_rect) %>%
+  summarise(cod_diet = sum(value)) %>% 
+  arrange(name, year, ices_rect) %>%
+  ungroup() %>% 
+  group_by(year, quarter, ices_rect) %>%
+  mutate(cod_diet_tot = sum(cod_diet),
+         cod_diet_prop = cod_diet / cod_diet_tot) %>% 
+  ungroup()
+
+cod_prey_wide <- cod_prey_long %>%
+  pivot_wider(names_from = name, values_from = cod_diet_prop, values_fill = 0)
+
+# Calculate Schoener index
+schoener <- left_join(cod_prey_long, fle_prey_long) %>% 
+  drop_na(name) %>% 
+  drop_na(fle_diet_prop) %>% 
+  drop_na(cod_diet_prop) %>% 
+  group_by(year, quarter, ices_rect) %>%
+  summarise(schoener = 1 - 0.5*(sum(abs(fle_diet_prop - cod_diet_prop)))) %>% 
+  ungroup()
+
+# Calculate Levin niche index
+levin <- left_join(cod_prey_long, fle_prey_long) %>% 
+  drop_na(name) %>% 
+  drop_na(fle_diet_prop) %>% 
+  drop_na(cod_diet_prop) %>% 
+  group_by(year, quarter, ices_rect) %>% 
+  summarise(levin_cod = (1/(16-1)) * (((1/sum(cod_diet_prop^2))) - 1),
+            levin_fle = (1/(16-1)) * (((1/sum(fle_diet_prop^2))) - 1)) %>% 
+  ungroup()
+
+# Merge the indicies  
+ind <- left_join(levin, schoener)
+
+# Summarise cod and flounder data by ices_rect then add to diet data
+colnames(cod)
+cod$year_rect_id <- paste(cod$year, cod$quarter, cod$ices_rect, sep = "_")
+
+dens_sum <- cod %>% group_by(year_rect_id) %>%
+  summarise(predfle_density_tot = sum(predfle_density),
+            predcod_density_tot = sum(predcod_density)) %>% 
+  ungroup() %>% 
+  mutate(predfle_density_tot_sc = (predfle_density_tot - mean(predfle_density_tot)) / sd(predfle_density_tot),
+         predcod_density_tot_sc = (predcod_density_tot - mean(predcod_density_tot)) / sd(predcod_density_tot))
+
+ind$year_rect_id <- paste(ind$year, ind$quarter, ind$ices_rect, sep = "_")
+
+ind <- left_join(ind, dens_sum)
+
+# Summarise depth from the prediction grid then add to diet data
+pred_grid2_sum <- pred_grid2 %>% 
+  group_by(ices_rect) %>%
+  summarise(mean_depth = mean(depth)) %>%
+  mutate(depth_sc = (mean_depth - mean(mean_depth)) / sd(mean_depth)) %>% 
+  ungroup()
+
+ind <- left_join(ind, dplyr::select(pred_grid2_sum, ices_rect, depth_sc, mean_depth))
+
+# Plot the indicies
+ggplot(ind) +
+  geom_jitter(aes(factor(year), schoener),
+              alpha = 0.8, width = 0.2, height = 0, size = 2)
+ggplot(ind) +
+  geom_jitter(aes(factor(year), levin_cod, color = "cod"),
+              alpha = 0.8, width = 0.2, height = 0, size = 2) + 
+  geom_jitter(aes(factor(year), levin_fle, color = "fle"),
+              alpha = 0.8, width = 0.2, height = 0, size = 2) +
+  scale_color_brewer(palette = "Dark2")
+
+# Against response variables
+# Schoener 
+ggplot(ind, aes(x = predfle_density_tot + predcod_density_tot, y = schoener)) +
+  geom_point() + stat_smooth(method = "gam", formula = y ~ s(x, k = 3)) + facet_wrap(~quarter)
+  
+ggplot(ind, aes(x = predfle_density_tot, y = schoener)) + geom_point() + 
+  stat_smooth(method = "gam", formula = y ~ s(x, k = 3)) + facet_wrap(~quarter)
+
+ggplot(ind, aes(x = predcod_density_tot, y = schoener)) + geom_point() +
+  stat_smooth(method = "gam", formula = y ~ s(x, k = 3)) + facet_wrap(~quarter)
+
+# Now Levin
+# Cod
+ggplot(ind, aes(x = predfle_density_tot + predcod_density_tot, y = levin_cod)) +
+  geom_point() + stat_smooth(method = "gam", formula = y ~ s(x, k = 3)) + facet_wrap(~quarter) 
+  
+ggplot(ind, aes(x = predfle_density_tot, y = levin_cod)) + geom_point() +
+  stat_smooth(method = "gam", formula = y ~ s(x, k = 3)) + facet_wrap(~quarter) 
+  
+ggplot(ind, aes(x = predcod_density_tot, y = levin_cod)) + geom_point() + 
+  stat_smooth(method = "gam", formula = y ~ s(x, k = 3)) + facet_wrap(~quarter) 
+
+# Flounder
+ggplot(ind, aes(x = predfle_density_tot + predcod_density_tot, y = levin_fle)) +
+  geom_point() + stat_smooth(method = "gam", formula = y ~ s(x, k = 3)) + facet_wrap(~quarter) 
+  
+ggplot(ind, aes(x = predfle_density_tot, y = levin_fle)) + geom_point() +
+  stat_smooth(method = "gam", formula = y ~ s(x, k = 3)) + facet_wrap(~quarter) 
+  
+ggplot(ind, aes(x = predcod_density_tot, y = levin_fle)) + geom_point() + 
+  stat_smooth(method = "gam", formula = y ~ s(x, k = 3)) + facet_wrap(~quarter) 
+
+# Quickly check data to determine which distribution to use
+ind %>% 
+  ungroup() %>% 
+  count(schoener == 0) %>% 
+  mutate(prop = n / sum(n))
+
+ind %>% 
+  ungroup() %>% 
+  count(levin_cod == 0) %>% 
+  mutate(prop = n / sum(n))
+
+ind %>% 
+  ungroup() %>% 
+  count(levin_fle == 0) %>% 
+  mutate(prop = n / sum(n))
+
+# Fit beta models, so few zeroes!
+ind %>% arrange(schoener) %>% dplyr::select(schoener)
+ind %>% arrange(levin_cod) %>% dplyr::select(levin_cod)
+ind %>% arrange(levin_fle) %>% dplyr::select(levin_fle)
+
+ind <- ind %>% mutate(schoener2 = ifelse(schoener == 0, 0.0001, schoener),
+                      levin_cod2 = ifelse(levin_cod == 0, 0.0001, levin_cod),
+                      levin_fle2 = ifelse(levin_fle == 0, 0.0001, levin_fle),
+                      year_f = as.factor(year),
+                      quarter_f = as.factor(quarter),
+                      ices_rect_f = as.factor(ices_rect))
+```
+
+## Fit `brms` models with densities as covariates to diversity and overlap indices
+
+```{r fit beta models to schoener overlap with covariates, cache=TRUE}
+# All covariates
+m_schoen_beta_full <- brm(
+  bf(schoener2 ~ 0 + year_f + quarter_f + depth_sc + predfle_density_tot_sc + predcod_density_tot_sc + (1|ices_rect_f),
+     phi ~ 0 + year_f + quarter_f),
+  data = ind, family = brms::Beta(link = "logit", link_phi = "log"), save_pars = save_pars(all = TRUE),
+  #backend = "cmdstanr",
+  chains = 4, iter = 4000, warmup = 1000, cores = 4, control = list(adapt_delta = 0.95))
+
+plot(m_schoen_beta_full)
+conditional_effects(m_schoen_beta_full)
+loo_m_schoen_beta_full <- loo(m_schoen_beta_full, moment_match = TRUE)
+plot(loo_m_schoen_beta_full)
+
+# Only density covariates
+m_schoen_beta_dens <- brm(
+  bf(schoener2 ~ 0 + year_f + predfle_density_tot_sc + predcod_density_tot_sc + (1|ices_rect_f),
+     phi ~ 0 + year_f),
+  data = ind, family = brms::Beta(link = "logit", link_phi = "log"), save_pars = save_pars(all = TRUE),
+  #backend = "cmdstanr",
+  chains = 4, iter = 4000, warmup = 1000, cores = 4, control = list(adapt_delta = 0.95))
+
+plot(m_schoen_beta_dens)
+conditional_effects(m_schoen_beta_dens)
+loo_m_schoen_beta_dens <- loo(m_schoen_beta_dens, moment_match = TRUE)
+plot(loo_m_schoen_beta_dens)
+
+# Simplest model
+m_schoen_beta <- brm(
+  bf(schoener2 ~ 0 + year_f + (1|ices_rect_f),
+     phi ~ 0 + year_f),
+  data = ind, family = brms::Beta(link = "logit", link_phi = "log"), save_pars = save_pars(all = TRUE),
+  #backend = "cmdstanr",
+  chains = 4, iter = 4000, warmup = 1000, cores = 4, control = list(adapt_delta = 0.95))
+
+plot(m_schoen_beta)
+conditional_effects(m_schoen_beta)
+loo_m_schoen_beta <- loo(m_schoen_beta, moment_match = TRUE)
+plot(loo_m_schoen_beta)
+
+loo_compare(loo_m_schoen_beta, loo_m_schoen_beta_dens, loo_m_schoen_beta_full)
+
+# Plot models (working with the m_schoen_beta_dens)
+summary(m_schoen_beta_dens)
+
+# Working with the posterior
+posterior_beta <- m_schoen_beta_dens %>% 
+  gather_draws(`b_.*`, regex = TRUE) %>% 
+  mutate(component = ifelse(str_detect(.variable, "phi_"), "Precision", "Mean"),
+         intercept = str_detect(.variable, "Intercept"))
+
+ggplot(posterior_beta, aes(x = .value, y = fct_rev(.variable), fill = component)) +
+  geom_vline(xintercept = 0) +
+  stat_halfeye(aes(slab_alpha = intercept), alpha = 0.5,
+               .width = c(0.8, 0.95), point_interval = "median_hdi") +
+  scale_fill_brewer(palette = "Dark2") +
+  scale_slab_alpha_discrete(range = c(1, 0.4)) +
+  guides(fill = "none", slab_alpha = "none") +
+  labs(x = "Coefficient", y = "Variable") +
+  facet_wrap(vars(component), ncol = 1, scales = "free_y") +
+  theme_plot() + 
+  NULL
+
+# Selected parameters
+# https://www.sciencedirect.com/topics/mathematics/logit-scale
+posterior_beta %>%
+  filter(component == "Mean" & .variable %in% c("b_predcod_density_tot_sc", "b_predfle_density_tot_sc")) %>% 
+  ggplot(., aes(x = plogis(.value), y = .variable, fill = .variable)) +
+  geom_vline(xintercept = 0) +
+  stat_halfeye(alpha = 0.5, .width = c(0.8, 0.95)) +
+  scale_fill_brewer(palette = "Dark2") +
+  labs(x = "Coefficient", y = "Variable") +
+  theme_plot() + 
+  guides(fill = FALSE) + 
+  NULL
+
+# Prediction! (non dens model)
+beta_bayes_pred_yr <- m_schoen_beta %>% 
+  epred_draws(newdata = tibble(year_f = as.factor(c(2015:2020))),
+              re_formula = NA)
+
+ggplot(beta_bayes_pred_yr, aes(x = .epred, y = year_f, color = year_f, fill = year_f)) +
+  stat_halfeye(.width = c(0.8, 0.95), alpha = 0.7) +
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  guides(fill = FALSE, color = FALSE) +
+  coord_flip(xlim = c(0, 0.4)) + 
+  labs(x = "Predicted Schoener's overlap index", y = NULL) +
+  theme_plot()
+
+beta_bayes_pred_re <- m_schoen_beta %>% 
+  epred_draws(newdata = tibble(expand.grid(year_f = as.factor(c(2015:2020)),
+                                            ices_rect_f = as.factor(unique(ind$ices_rect)))))
+
+ggplot(beta_bayes_pred_re, aes(x = .epred, y = ices_rect_f, color = ices_rect_f, fill = ices_rect_f)) +
+  stat_halfeye(.width = c(0.8, 0.95), alpha = 0.7) +
+  scale_fill_viridis(discrete = TRUE) +
+  scale_color_viridis(discrete = TRUE) +
+  guides(fill = FALSE, color = FALSE) +
+  coord_cartesian(xlim = c(0, 0.4)) + 
+  #coord_flip(xlim = c(0, 0.4)) + 
+  labs(x = "Predicted Schoener's overlap index", y = NULL) +
+  theme_plot()
+```
+
+```{r fit beta models to levin diversity index with covariates, cache=TRUE}
+# Cod Levin index: all covariates
+m_levin_beta_full_cod <- brm(
+  bf(levin_cod2 ~ 0 + year_f + quarter_f + depth_sc + predfle_density_tot_sc + predcod_density_tot_sc + (1|ices_rect_f),
+     phi ~ 0 + year_f + quarter_f),
+  data = ind, family = brms::Beta(link = "logit", link_phi = "log"), save_pars = save_pars(all = TRUE),
+  #backend = "cmdstanr",
+  chains = 2, iter = 2000, warmup = 1000, cores = 2, control = list(adapt_delta = 0.99))
+
+plot(m_levin_beta_full_cod)
+conditional_effects(m_levin_beta_full_cod)
+loo_m_schoen_beta_full <- loo(m_levin_beta_full_cod, moment_match = TRUE)
+plot(m_levin_beta_full_cod)
+
+m_levin_beta_full_fle <- brm(
+  bf(levin_fle2 ~ 0 + year_f + quarter_f + depth_sc + predfle_density_tot_sc + predcod_density_tot_sc + (1|ices_rect_f),
+     phi ~ 0 + year_f + quarter_f),
+  data = ind, family = brms::Beta(link = "logit", link_phi = "log"), save_pars = save_pars(all = TRUE),
+  #backend = "cmdstanr",
+  chains = 2, iter = 2000, warmup = 1000, cores = 2, control = list(adapt_delta = 0.99))
+
+plot(m_levin_beta_full_fle)
+conditional_effects(m_levin_beta_full_fle)
+loo_m_schoen_beta_full <- loo(m_levin_beta_full_fle, moment_match = TRUE)
+plot(m_levin_beta_full_fle)
+
+```
+
+## Fit `sdmTMB` models with densities as covariates to stomach content data. First make mesh
+
+```{r make meshes}
 # Cod 
 pcod_spde <- make_mesh(cod, c("X", "Y"), n_knots = 150, type = "kmeans", seed = 42)
 plot(pcod_spde)
@@ -163,7 +502,7 @@ plot(pfle_spde)
 # Cod
 mcod <- sdmTMB(
   data = cod, 
-  formula = tot_prey_biom_per_mass ~ 0 + quarter + as.factor(year) + predfle_density_sc*depth_sc + predcod_density_sc,
+  formula = tot_prey_biom_per_mass ~ 0 + quarter + as.factor(year) + predfle_density_sc + predcod_density_sc + s(depth_sc),
   time = "year", fields = "IID", spatial_only = FALSE, spde = pcod_spde, family = tweedie())
 
 tidy(mcod)
@@ -175,7 +514,7 @@ qqnorm(cod$resids_mcod); abline(a = 0, b = 1)
 # Flounder
 mfle <- sdmTMB(
   data = fle, 
-  formula = tot_prey_biom_per_mass ~ 0 + as.factor(year) + predfle_density_sc + predcod_density_sc*depth_sc,
+  formula = tot_prey_biom_per_mass ~ 0 + quarter + as.factor(year) + predfle_density_sc + predcod_density_sc + s(depth_sc),
   time = "year", fields = "IID", spatial_only = FALSE, spde = pfle_spde, family = tweedie())
 
 tidy(mfle)
@@ -192,7 +531,7 @@ qqnorm(fle$resids_mfle); abline(a = 0, b = 1)
 # Cod
 mcodsad <- sdmTMB(
   data = cod, 
-  formula = saduria_entomon_per_mass ~ 0 + quarter + as.factor(year) + predfle_density_sc*depth_sc + predcod_density_sc,
+  formula = saduria_entomon_per_mass ~ 0 + quarter + as.factor(year) + predfle_density_sc + predcod_density_sc + s(depth_sc),
   time = "year", fields = "IID", spatial_only = FALSE, spde = pcod_spde, family = tweedie())
 
 tidy(mcodsad)
@@ -204,7 +543,7 @@ qqnorm(cod$resids_mcodsad); abline(a = 0, b = 1)
 # Flounder
 mflesad <- sdmTMB(
   data = fle, 
-  formula = saduria_entomon_per_mass ~ 0 + as.factor(year) + predfle_density_sc + predcod_density_sc*depth_sc,
+  formula = saduria_entomon_per_mass ~ 0 + quarter + as.factor(year) + predfle_density_sc + predcod_density_sc + s(depth_sc),
   time = "year", fields = "IID", spatial_only = FALSE, spde = pfle_spde, family = tweedie())
 
 tidy(mflesad)
@@ -225,11 +564,10 @@ nd_cod_fle <- data.frame(predfle_density_sc = seq(min(cod$predfle_density_sc),
 nd_cod_fle$year <- 2018L
 nd_cod_fle$predcod_density_sc <- 0
 nd_cod_fle$depth_sc <- 0
-nd_cod_fle$quarter <- factor(1)
+nd_cod_fle$quarter <- factor(4)
 
 sad_pred_cod_fle <- predict(mcodsad, newdata = nd_cod_fle, se_fit = TRUE, re_form = NA)
 tot_pred_cod_fle <- predict(mcod, newdata = nd_cod_fle, se_fit = TRUE, re_form = NA)
-
 
 # Cod density
 nd_cod_cod <- data.frame(predcod_density_sc = seq(min(cod$predcod_density_sc),
@@ -238,7 +576,7 @@ nd_cod_cod <- data.frame(predcod_density_sc = seq(min(cod$predcod_density_sc),
 nd_cod_cod$year <- 2018L
 nd_cod_cod$predfle_density_sc <- 0
 nd_cod_cod$depth_sc <- 0
-nd_cod_cod$quarter <- factor(1)
+nd_cod_cod$quarter <- factor(4)
 
 sad_pred_cod_cod <- predict(mcodsad, newdata = nd_cod_cod, se_fit = TRUE, re_form = NA)
 tot_pred_cod_cod <- predict(mcod, newdata = nd_cod_cod, se_fit = TRUE, re_form = NA)
@@ -254,6 +592,7 @@ nd_fle_fle <- data.frame(predfle_density_sc = seq(min(fle$predfle_density_sc),
 nd_fle_fle$year <- 2018L
 nd_fle_fle$predcod_density_sc <- 0
 nd_fle_fle$depth_sc <- 0
+nd_fle_fle$quarter <- factor(4)
 
 sad_pred_fle_fle <- predict(mflesad, newdata = nd_fle_fle, se_fit = TRUE, re_form = NA)
 tot_pred_fle_fle <- predict(mfle, newdata = nd_fle_fle, se_fit = TRUE, re_form = NA)
@@ -265,6 +604,7 @@ nd_fle_cod <- data.frame(predcod_density_sc = seq(min(fle$predcod_density_sc),
 nd_fle_cod$year <- 2018L
 nd_fle_cod$predfle_density_sc <- 0
 nd_fle_cod$depth_sc <- 0
+nd_fle_cod$quarter <- factor(4)
 
 sad_pred_fle_cod <- predict(mflesad, newdata = nd_fle_cod, se_fit = TRUE, re_form = NA)
 tot_pred_fle_cod <- predict(mfle, newdata = nd_fle_cod, se_fit = TRUE, re_form = NA)
@@ -277,7 +617,7 @@ tot_pred_fle_cod <- predict(mfle, newdata = nd_fle_cod, se_fit = TRUE, re_form =
 p1 <- ggplot(sad_pred_fle_fle, aes(predfle_density_sc, exp(est),
   ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
   geom_line() + geom_ribbon(alpha = 0.4) +
-  coord_cartesian(ylim = c(0, 0.015), expand = 0) + 
+  #coord_cartesian(ylim = c(0, 0.015), expand = 0) + 
   labs(y = "Saduria in flounder stomach [g/g]", x = "")
 
 p2 <- ggplot(sad_pred_fle_cod, aes(predcod_density_sc, exp(est),
@@ -328,86 +668,6 @@ p8 <- ggplot(tot_pred_cod_cod, aes(predcod_density_sc, exp(est),
 p5 + p6 + p7 + p8 + plot_layout(ncol = 2)
 
 ggsave("figures/marginal_effects_total.png", width = 6.5, height = 6.5, dpi = 600)
-```
-
-## No do the same for total stomach contents
-
-```{r plot marginal effects for full stomach content}
-## Flounder
-# Flounder density
-nd_fle_fle <- data.frame(predfle_density_sc = seq(min(fle$predfle_density_sc),
-                                                  max(fle$predfle_density_sc), length.out = 100))
-
-nd_fle_fle$year <- 2018L
-nd_fle_fle$predcod_density_sc <- 0
-nd_fle_fle$depth_sc <- 0
-
-pred_fle_fle <- predict(mflesad, newdata = nd_fle_fle, se_fit = TRUE, re_form = NA)
-
-p1 <- ggplot(pred_fle_fle, aes(predfle_density_sc, exp(est),
-  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
-  geom_line() + geom_ribbon(alpha = 0.4) +
-  coord_cartesian(ylim = c(0, 0.015), expand = 0) + 
-  labs(y = "Saduria in stomach [g/g]", x = "")
-
-# Cod density
-nd_fle_cod <- data.frame(predcod_density_sc = seq(min(fle$predcod_density_sc),
-                                                  max(fle$predcod_density_sc), length.out = 100))
-
-nd_fle_cod$year <- 2018L
-nd_fle_cod$predfle_density_sc <- 0
-nd_fle_cod$depth_sc <- 0
-
-pred_fle_cod <- predict(mflesad, newdata = nd_fle_cod, se_fit = TRUE, re_form = NA)
-
-p2 <- ggplot(pred_fle_cod, aes(predcod_density_sc, exp(est),
-  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
-  geom_line() + geom_ribbon(alpha = 0.4) + 
-  coord_cartesian(ylim = c(0, 0.015), expand = 0) + 
-  labs(y = "", x = "")
-
-flemargin <- p1 + p2 + plot_annotation(title = "",
-                                       theme = theme(plot.title = element_text(size = 16, hjust = 0.5)))
-
-## Cod
-# Flounder density
-nd_cod_fle <- data.frame(predfle_density_sc = seq(min(cod$predfle_density_sc),
-                                                  max(cod$predfle_density_sc), length.out = 100))
-
-nd_cod_fle$year <- 2018L
-nd_cod_fle$predcod_density_sc <- 0
-nd_cod_fle$depth_sc <- 0
-nd_cod_fle$quarter <- factor(1)
-
-pred_cod_fle <- predict(mcodsad, newdata = nd_cod_fle, se_fit = TRUE, re_form = NA)
-
-p3 <- ggplot(pred_cod_fle, aes(predfle_density_sc, exp(est),
-  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
-  geom_line() + geom_ribbon(alpha = 0.4) +
-  labs(y = "Saduria in stomach [g/g]", x = "Scaled flounder density")
-
-# Cod density
-nd_cod_cod <- data.frame(predcod_density_sc = seq(min(cod$predcod_density_sc),
-                                                  max(cod$predcod_density_sc), length.out = 100))
-
-nd_cod_cod$year <- 2018L
-nd_cod_cod$predfle_density_sc <- 0
-nd_cod_cod$depth_sc <- 0
-nd_cod_cod$quarter <- factor(1)
-
-pred_cod_cod <- predict(mcodsad, newdata = nd_cod_cod, se_fit = TRUE, re_form = NA)
-
-p4 <- ggplot(pred_cod_cod, aes(predcod_density_sc, exp(est),
-  ymin = exp(est - 1.96 * est_se), ymax = exp(est + 1.96 * est_se))) +
-  geom_line() + geom_ribbon(alpha = 0.4) + 
-  labs(y = "", x = "Scaled cod density")
-
-codmargin <- p3 + p4 + plot_annotation(title = "Cod marginal effects",
-                                       theme = theme(plot.title = element_text(size = 16, hjust = 0.5)))
-
-flemargin / codmargin # Add silhouettes here?
-
-ggsave("figures/margina_saduria.png", width = 6.5, height = 6.5, dpi = 600)
 ```
 
 ```{r}
