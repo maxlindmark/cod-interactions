@@ -126,6 +126,8 @@ LongLatToUTM <- function(x, y, zone){
 ```{r read data, warning=FALSE}
 d <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/bentfish/data/for_analysis/stomach/full_stomach_data_21.10.25.csv") %>% dplyr::select(-X1)
 
+d %>% filter(Year == 1990) %>% as.data.frame()
+
 # Drop NA coordinates (because these do not even have ices-rectangle, see diet data processing script in benthfish project)
 d <- d %>% drop_na(Long) %>% drop_na(Lat)
 
@@ -177,6 +179,19 @@ d_wide <- d %>%
   mutate(across(everything(), ~replace_na(.x, 0))) %>% # Replace NA with 0, because it means the prey does not exist
   janitor::clean_names()
 
+# Test how many zeroes I have per time period
+d %>% 
+  drop_na(Prey.weight) %>% 
+  group_by(Year, Unique.pred.id, Prey.sp.code) %>% 
+  summarise(tot_biom_per_prey = sum(Prey.weight)) %>% 
+  ungroup() %>% 
+  group_by(Unique.pred.id, Year) %>% 
+  summarise(tot_biom_prey = sum(tot_biom_per_prey)) %>% 
+  ungroup() %>% 
+  mutate(empty = ifelse(tot_biom_prey == 0, "Y", "N")) %>% 
+  ggplot(., aes(Year, fill = empty)) +
+  geom_bar()
+  
 head(d_wide)
 str(d_wide)
 colnames(d_wide)
@@ -428,10 +443,11 @@ t <- cod %>%
 
 ```{r test analysis}
 # First read the density models and predict the values
-mcod2 <- readRDS("output/mcod2.rds")
-mfle2 <- readRDS("output/mfle2.rds")
+mcod2_q1 <- readRDS("output/mcod2_q1.rds")
+mcod2_q4 <- readRDS("output/mcod2_q4.rds")
 
-# Make predictions onto the stomach data defined earlier (1 row per stomach and prey?)
+mfle2_q1 <- readRDS("output/mfle2_q1.rds")
+mfle2_q4 <- readRDS("output/mfle2_q4.rds")
 
 # Add depth and rename coordinates to match the data used for fitting the density model
 # Read the tifs
@@ -449,9 +465,9 @@ cod$depth <- extract(dep_rast, cod[, 27:26])
 fle$depth <- extract(dep_rast, fle[, 27:26])
 
 # Convert to depth (instead of elevation)
-ggplot(cod, aes(depth)) + geom_histogram()
+ggplot(cod, aes(x, y, color = depth)) + geom_point()
 cod$depth <- (cod$depth - max(drop_na(cod)$depth)) *-1
-ggplot(cod, aes(depth)) + geom_histogram()
+ggplot(cod, aes(x, y, color = depth)) + geom_point()
 
 fle$depth <- (fle$depth - max(drop_na(fle)$depth)) *-1
 
@@ -468,34 +484,61 @@ density_dat <- readr::read_csv("https://raw.githubusercontent.com/maxlindmark/co
 cod <- cod %>% mutate(depth_sc = (depth - mean(density_dat$depth)) / sd(density_dat$depth))
 fle <- fle %>% mutate(depth_sc = (depth - mean(density_dat$depth)) / sd(density_dat$depth))
 
-cod2 <- cod %>% filter(year < 2020 & year > 1992) # Remove this after I've refitted the models with 2020!
-cod_old <- cod %>% filter(year < 1993) # Filter the old data so that we can rbind it later
-fle2 <- fle %>% filter(year < 2020) # Remove this after I've refitted the models with 2020!
+cod_old <- cod %>% filter(year < 1992) # Filter the old data so that we can bind_rows it later
+cod <- cod %>% filter(year > 1991)
+
+# Filter by quarter so that the prediction data frame is correct
+cod_nd_q1 <- filter(cod, quarter == 1)
+cod_nd_q4 <- filter(cod, quarter == 4)
+
+fle_nd_q1 <- filter(fle, quarter == 1)
+fle_nd_q4 <- filter(fle, quarter == 4)
 
 # Now predict using the density models
-cod_stomach_predcod_density <- predict(mcod2, newdata = dplyr::select(cod2, depth_sc, year, X, Y))
-cod_stomach_predfle_density <- predict(mfle2, newdata = dplyr::select(cod2, depth_sc, year, X, Y))
+cod_stomach_predcod_density_q1 <- predict(mcod2_q1, newdata = dplyr::select(cod_nd_q1, depth_sc, year, X, Y))
+cod_stomach_predcod_density_q4 <- predict(mcod2_q4, newdata = dplyr::select(cod_nd_q4, depth_sc, year, X, Y))
 
-fle_stomach_predcod_density <- predict(mcod2, newdata = dplyr::select(fle2, depth_sc, year, X, Y))
-fle_stomach_predfle_density <- predict(mfle2, newdata = dplyr::select(fle2, depth_sc, year, X, Y))
+cod_stomach_predfle_density_q1 <- predict(mfle2_q1, newdata = dplyr::select(cod_nd_q1, depth_sc, year, X, Y))
+cod_stomach_predfle_density_q4 <- predict(mfle2_q4, newdata = dplyr::select(cod_nd_q4, depth_sc, year, X, Y))
 
-cod2$predcod_density <- exp(cod_stomach_predcod_density$est)
-cod2$predfle_density <- exp(cod_stomach_predfle_density$est)
+fle_stomach_predcod_density_q1 <- predict(mcod2_q1, newdata = dplyr::select(fle_nd_q1, depth_sc, year, X, Y))
+fle_stomach_predcod_density_q4 <- predict(mcod2_q4, newdata = dplyr::select(fle_nd_q4, depth_sc, year, X, Y))
 
-fle2$predcod_density <- exp(fle_stomach_predcod_density$est)
-fle2$predfle_density <- exp(fle_stomach_predfle_density$est)
+fle_stomach_predfle_density_q1 <- predict(mfle2_q1, newdata = dplyr::select(fle_nd_q1, depth_sc, year, X, Y))
+fle_stomach_predfle_density_q4 <- predict(mfle2_q4, newdata = dplyr::select(fle_nd_q4, depth_sc, year, X, Y))
+
+# Add predictions to the diet data
+cod <- cod %>% mutate(predcod_density = ifelse(quarter == 1,
+                                               exp(cod_stomach_predcod_density_q1$est),
+                                               exp(cod_stomach_predcod_density_q4$est)),
+                      predcod_density = ifelse(quarter == 2, NA, predcod_density),
+                      predfle_density = ifelse(quarter == 1,
+                                               exp(cod_stomach_predfle_density_q1$est),
+                                               exp(cod_stomach_predfle_density_q4$est)),
+                      predfle_density = ifelse(quarter == 2, NA, predfle_density))
+
+fle <- fle %>% mutate(predcod_density = ifelse(quarter == 1,
+                                               exp(fle_stomach_predcod_density_q1$est),
+                                               exp(fle_stomach_predcod_density_q4$est)),
+                      predcod_density = ifelse(quarter == 2, NA, predcod_density),
+                      predfle_density = ifelse(quarter == 1,
+                                               exp(fle_stomach_predfle_density_q1$est),
+                                               exp(fle_stomach_predfle_density_q4$est)),
+                      predfle_density = ifelse(quarter == 2, NA, predfle_density))
 
 # Add scaled predicted densities to the stomach data
-cod2 <- cod2 %>%
+cod <- cod %>%
+  group_by(quarter) %>% # if we include quarter as a factor, then do NOT group by quarter
   mutate(predcod_density_sc = (predcod_density - mean(predcod_density))/sd(predcod_density),
          predfle_density_sc = (predfle_density - mean(predfle_density))/sd(predfle_density))
 
-fle2 <- fle2 %>%
+fle <- fle %>%
+  group_by(quarter) %>% # if we include quarter as a factor, then do NOT group by quarter
   mutate(predcod_density_sc = (predcod_density - mean(predcod_density))/sd(predcod_density),
          predfle_density_sc = (predfle_density - mean(predfle_density))/sd(predfle_density))
 
 # Add the old data back using bind_rows so that density estimates get NA
-cod2 <- bind_rows(cod2, cod_old)
+cod <- bind_rows(cod, cod_old)
 ```
 
 ## Save data for further analysis
@@ -503,18 +546,38 @@ cod2 <- bind_rows(cod2, cod_old)
 ```{r save data}
 colnames(cod)
 
-cod_save <- cod2 %>% dplyr::select(FR_tot, FR_sad, FR_spr, saduria_entomon_tot, tot_prey_biom, common_tot, unique_pred_id,
-                                   year, quarter, time_period, quarter_fact, pred_weight_g, pred_cm,
-                                   predator_spec, predcod_density, predfle_density, predcod_density_sc,
-                                   predfle_density_sc, depth, X, Y, lat, long, ices_rect, cruise)
+cod_save <- cod %>%
+  dplyr::select(FR_tot, FR_sad, FR_spr, saduria_entomon_tot, tot_prey_biom, common_tot, unique_pred_id,
+                year, quarter, time_period, quarter_fact, pred_weight_g, pred_cm, predator_spec, predcod_density,
+                predfle_density, predcod_density_sc, predfle_density_sc, depth, X, Y, lat, long, ices_rect, cruise)
 
-fle_save <- fle2 %>% dplyr::select(FR_tot, FR_sad, FR_spr, saduria_entomon_tot, tot_prey_biom, common_tot, unique_pred_id,
-                                   year, quarter, pred_weight_g, pred_cm,
-                                   predator_spec, predcod_density, predfle_density, predcod_density_sc,
-                                   predfle_density_sc, depth, X, Y, lat, long, ices_rect, cruise)
+fle_save <- fle %>%
+  dplyr::select(FR_tot, FR_sad, FR_spr, saduria_entomon_tot, tot_prey_biom, common_tot, unique_pred_id,
+                year, quarter, pred_weight_g, pred_cm, predator_spec, predcod_density, predfle_density,
+                predcod_density_sc, predfle_density_sc, depth, X, Y, lat, long, ices_rect, cruise)
 
 write.csv(cod_save, "data/cod_diet_analysis.csv")
 write.csv(fle_save, "data/fle_diet_analysis.csv")
+
+# Save for multivariate analysis (all species groups saved)
+cod_save_pca <- cod %>%
+  dplyr::select(unique_pred_id, year, quarter, pred_weight_g, pred_cm,
+                predator_spec, depth, X, Y, lat, long, ices_rect, cruise,
+                amphipoda_tot, bivalvia_tot, clupeidae_tot, clupea_harengus_tot, 
+                gadus_morhua_tot, gadiformes_tot, gobiidae_tot, mysidae_tot, non_bio_tot, 
+                other_crustacea_tot, other_tot, other_pisces_tot, platichthys_flesus_tot, 
+                polychaeta_tot, saduria_entomon_tot, sprattus_sprattus_tot)
+
+fle_save_pca <- fle %>%
+  dplyr::select(unique_pred_id, year, quarter, pred_weight_g, pred_cm,
+                predator_spec, depth, X, Y, lat, long, ices_rect, cruise,
+                amphipoda_tot, bivalvia_tot, clupeidae_tot, clupea_harengus_tot, 
+                gadus_morhua_tot, gadiformes_tot, gobiidae_tot, mysidae_tot, non_bio_tot, 
+                other_crustacea_tot, other_tot, other_pisces_tot, platichthys_flesus_tot, 
+                polychaeta_tot, saduria_entomon_tot, sprattus_sprattus_tot)
+
+write.csv(cod_save_pca, "data/pca_cod_diet_analysis.csv")
+write.csv(fle_save_pca, "data/pca_fle_diet_analysis.csv")
 ```
 
 ## Extra: explore response variables
@@ -532,27 +595,27 @@ ggplot(fle, aes(pred_cm, FR_tot)) +
 
 # r plot cod stomach against density
 # Common prey
-p1 <- ggplot(cod2, aes(predcod_density_sc, prop_common)) + 
+p1 <- ggplot(cod, aes(predcod_density_sc, prop_common)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
   
-p2 <- ggplot(cod2, aes(predcod_density_sc, common_tot/pred_weight_g)) + 
+p2 <- ggplot(cod, aes(predcod_density_sc, common_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p3 <- ggplot(cod2, aes(predfle_density_sc, prop_common)) + 
+p3 <- ggplot(cod, aes(predfle_density_sc, prop_common)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p4 <- ggplot(cod2, aes(predfle_density_sc, common_tot/pred_weight_g)) + 
+p4 <- ggplot(cod, aes(predfle_density_sc, common_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p5 <- ggplot(cod2, aes(predfle_density_sc + predcod_density_sc, prop_common)) + 
+p5 <- ggplot(cod, aes(predfle_density_sc + predcod_density_sc, prop_common)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p6 <- ggplot(cod2, aes(predfle_density_sc + predcod_density_sc, common_tot/pred_weight_g)) + 
+p6 <- ggplot(cod, aes(predfle_density_sc + predcod_density_sc, common_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
@@ -560,27 +623,27 @@ p6 <- ggplot(cod2, aes(predfle_density_sc + predcod_density_sc, common_tot/pred_
                                                   theme = theme(plot.title = element_text(size = 16)))
 
 # Saduria
-p7 <- ggplot(cod2, aes(predcod_density_sc, prop_saduria)) + 
+p7 <- ggplot(cod, aes(predcod_density_sc, prop_saduria)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p8 <- ggplot(cod2, aes(predcod_density_sc, saduria_entomon_tot/pred_weight_g)) + 
+p8 <- ggplot(cod, aes(predcod_density_sc, saduria_entomon_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p9 <- ggplot(cod2, aes(predfle_density_sc, prop_saduria)) + 
+p9 <- ggplot(cod, aes(predfle_density_sc, prop_saduria)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p10 <- ggplot(cod2, aes(predfle_density_sc, saduria_entomon_tot/pred_weight_g)) + 
+p10 <- ggplot(cod, aes(predfle_density_sc, saduria_entomon_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p11 <- ggplot(cod2, aes(predfle_density_sc + predcod_density_sc, prop_saduria)) + 
+p11 <- ggplot(cod, aes(predfle_density_sc + predcod_density_sc, prop_saduria)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p12 <- ggplot(cod2, aes(predfle_density_sc + predcod_density_sc, saduria_entomon_tot/pred_weight_g)) + 
+p12 <- ggplot(cod, aes(predfle_density_sc + predcod_density_sc, saduria_entomon_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
@@ -588,32 +651,32 @@ p12 <- ggplot(cod2, aes(predfle_density_sc + predcod_density_sc, saduria_entomon
                                                   theme = theme(plot.title = element_text(size = 16)))
 
 # Total stomach content (FR)
-p13 <- ggplot(cod2, aes(predcod_density_sc, FR_tot)) + 
+p13 <- ggplot(cod, aes(predcod_density_sc, FR_tot)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p14 <- ggplot(cod2, aes(predfle_density_sc, FR_tot)) + 
+p14 <- ggplot(cod, aes(predfle_density_sc, FR_tot)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p15 <- ggplot(cod2, aes(predfle_density_sc + predcod_density, FR_tot)) + 
+p15 <- ggplot(cod, aes(predfle_density_sc + predcod_density, FR_tot)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
 (p13/p14/p15) + plot_annotation(title = "Cod stomachs", theme = theme(plot.title = element_text(size = 16)))
 
 # Closer inspection of some of the plots...
-ggplot(cod2, aes(predfle_density_sc, prop_saduria)) + 
+ggplot(cod, aes(predfle_density_sc, prop_saduria)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth(method = "lm") + 
   ggtitle("prop saduria vs fle density")
 
-ggplot(cod2, aes(predfle_density, tot_prey_biom/pred_weight_g)) + 
+ggplot(cod, aes(predfle_density, tot_prey_biom/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth() + 
   ggtitle("g/g tot. stomach vs fle density")
 
-ggplot(cod2, aes(predfle_density + predcod_density, tot_prey_biom/pred_weight_g)) + 
+ggplot(cod, aes(predfle_density + predcod_density, tot_prey_biom/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth() + 
   ggtitle("g/g tot. stomach vs fle  + coddensity")
@@ -621,27 +684,27 @@ ggplot(cod2, aes(predfle_density + predcod_density, tot_prey_biom/pred_weight_g)
 ## Plot flounder stomach against density
 
 # Common prey
-p1 <- ggplot(fle2, aes(predcod_density_sc, prop_common)) + 
+p1 <- ggplot(fle, aes(predcod_density_sc, prop_common)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p2 <- ggplot(fle2, aes(predcod_density_sc, common_tot/pred_weight_g)) + 
+p2 <- ggplot(fle, aes(predcod_density_sc, common_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p3 <- ggplot(fle2, aes(predfle_density_sc, prop_common)) + 
+p3 <- ggplot(fle, aes(predfle_density_sc, prop_common)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p4 <- ggplot(fle2, aes(predfle_density_sc, common_tot/pred_weight_g)) + 
+p4 <- ggplot(fle, aes(predfle_density_sc, common_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p5 <- ggplot(fle2, aes(predfle_density_sc + predcod_density_sc, prop_common)) + 
+p5 <- ggplot(fle, aes(predfle_density_sc + predcod_density_sc, prop_common)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p6 <- ggplot(fle2, aes(predfle_density_sc + predcod_density_sc, common_tot/pred_weight_g)) + 
+p6 <- ggplot(fle, aes(predfle_density_sc + predcod_density_sc, common_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
@@ -649,27 +712,27 @@ p6 <- ggplot(fle2, aes(predfle_density_sc + predcod_density_sc, common_tot/pred_
                                                   theme = theme(plot.title = element_text(size = 16)))
 
 # Saduria
-p7 <- ggplot(fle2, aes(predcod_density_sc, prop_saduria)) + 
+p7 <- ggplot(fle, aes(predcod_density_sc, prop_saduria)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p8 <- ggplot(fle2, aes(predcod_density_sc, saduria_entomon_tot/pred_weight_g)) + 
+p8 <- ggplot(fle, aes(predcod_density_sc, saduria_entomon_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p9 <- ggplot(fle2, aes(predfle_density_sc, prop_saduria)) + 
+p9 <- ggplot(fle, aes(predfle_density_sc, prop_saduria)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p10 <- ggplot(fle2, aes(predfle_density_sc, saduria_entomon_tot/pred_weight_g)) + 
+p10 <- ggplot(fle, aes(predfle_density_sc, saduria_entomon_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p11 <- ggplot(fle2, aes(predfle_density_sc + predcod_density_sc, prop_saduria)) + 
+p11 <- ggplot(fle, aes(predfle_density_sc + predcod_density_sc, prop_saduria)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p12 <- ggplot(fle2, aes(predfle_density_sc + predcod_density_sc, saduria_entomon_tot/pred_weight_g)) + 
+p12 <- ggplot(fle, aes(predfle_density_sc + predcod_density_sc, saduria_entomon_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
@@ -677,15 +740,15 @@ p12 <- ggplot(fle2, aes(predfle_density_sc + predcod_density_sc, saduria_entomon
                                                   theme = theme(plot.title = element_text(size = 16)))
 
 # FR
-p13 <- ggplot(fle2, aes(predcod_density_sc, FR_tot)) + 
+p13 <- ggplot(fle, aes(predcod_density_sc, FR_tot)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p14 <- ggplot(fle2, aes(predfle_density_sc, FR_tot)) + 
+p14 <- ggplot(fle, aes(predfle_density_sc, FR_tot)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
-p15 <- ggplot(fle2, aes(predfle_density_sc + predcod_density, FR_tot)) + 
+p15 <- ggplot(fle, aes(predfle_density_sc + predcod_density, FR_tot)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth()
 
@@ -697,16 +760,16 @@ p15 <- ggplot(fle2, aes(predfle_density_sc + predcod_density, FR_tot)) +
 ```{r more in depth plots}
 # Does it seem like proportions of the diet changes with density, but not the total amount of food?
 # Check saduria and flounder for instance.
-pp7 <- ggplot(fle2, aes(predcod_density_sc, prop_saduria)) + 
+pp7 <- ggplot(fle, aes(predcod_density_sc, prop_saduria)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth(method = "lm")
 
-pp8 <- ggplot(filter(fle2, (saduria_entomon_tot/pred_weight_g) < 0.1),
+pp8 <- ggplot(filter(fle, (saduria_entomon_tot/pred_weight_g) < 0.1),
              aes(predcod_density_sc, saduria_entomon_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth(method = "lm")
 
-pp13 <- ggplot(filter(fle2, (saduria_entomon_tot/pred_weight_g) < 0.1),
+pp13 <- ggplot(filter(fle, (saduria_entomon_tot/pred_weight_g) < 0.1),
               aes(predcod_density_sc, FR_tot)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth(method = "lm")
@@ -716,17 +779,17 @@ ppfle <- pp7/pp8/pp13 +
   plot_annotation(title = "Flounder stomachs", theme = theme(plot.title = element_text(size = 16)))
 
 # And that cod density is unaffected (or less at least)
-p7 <- ggplot(filter(cod2, (saduria_entomon_tot/pred_weight_g) < 0.02 & predfle_density_sc < 2),
+p7 <- ggplot(filter(cod, (saduria_entomon_tot/pred_weight_g) < 0.02 & predfle_density_sc < 2),
              aes(predfle_density_sc, prop_saduria)) + # Crop it up a little!
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth(method = "lm")
 
-p8 <- ggplot(filter(cod2, (saduria_entomon_tot/pred_weight_g) < 0.02 & predfle_density_sc < 2),
+p8 <- ggplot(filter(cod, (saduria_entomon_tot/pred_weight_g) < 0.02 & predfle_density_sc < 2),
              aes(predfle_density_sc, saduria_entomon_tot/pred_weight_g)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth(method = "lm")
 
-p13 <- ggplot(filter(cod2, (saduria_entomon_tot/pred_weight_g) < 0.02 & predfle_density_sc < 2 & FR_tot < 0.5),
+p13 <- ggplot(filter(cod, (saduria_entomon_tot/pred_weight_g) < 0.02 & predfle_density_sc < 2 & FR_tot < 0.5),
               aes(predfle_density_sc, FR_tot)) + 
   geom_point(size = 2, shape = 21, fill = "black", color = "white", alpha = 0.8) + 
   stat_smooth(method = "lm")
@@ -783,11 +846,8 @@ d_wide4 %>% filter(unique_pred_id == "2016_1_73_735_COD") %>% as.data.frame()
 d %>% filter(Unique.pred.id == "2016_1_73_735_COD") %>% as.data.frame()
 
 # Check sample sizes per size class (numbers below bars in Kevins figures)
-cod %>%
+cod2 %>%
   drop_na(pred_cm_class) %>% # This is because not all predators have length
-  filter(cruise %in% c("BITS", "BITS-1", "BITS-2")) %>%
-  filter(year %in% c(2015, 2016, 2017)) %>%
-  filter(source == "Kevin's MSC") %>% 
   filter(!pred_cm_class == "(0,6]") %>% 
   group_by(quarter, pred_cm_class) %>% 
   summarise(n = n())
