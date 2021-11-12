@@ -31,6 +31,9 @@ vignettes/*.pdf
 /data/depth_geo_tif/
 /data/ICES_StatRec_mapto_ICES_Areas/
 
+# Large model output files
+/output/
+
 # html files
 /R/analysis/cod_flounder_diets.html
 /R/analysis/density_spatial_trend_models.html
