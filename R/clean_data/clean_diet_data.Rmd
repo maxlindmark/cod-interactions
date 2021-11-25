@@ -541,6 +541,58 @@ fle <- fle %>%
 cod <- bind_rows(cod, cod_old)
 ```
 
+## Add Ices divisions
+
+```{r add ices sub div}
+# https://stackoverflow.com/questions/34272309/extract-shapefile-value-to-point-with-r
+# https://gis.ices.dk/sf/
+shape <- shapefile("data/ICES_StatRec_mapto_ICES_Areas/StatRec_map_Areas_Full_20170124.shp")
+head(shape)
+
+plot(shape, axes = TRUE)
+
+cod_pts <- SpatialPoints(cbind(cod$long, cod$lat), 
+                         proj4string = CRS(proj4string(shape)))
+
+fle_pts <- SpatialPoints(cbind(fle$long, fle$lat), 
+                         proj4string = CRS(proj4string(shape)))
+
+cod$subdiv <- over(cod_pts, shape)$Area_27
+cod$subdiv2 <- over(cod_pts, shape)$AreasList
+
+fle$subdiv <- over(fle_pts, shape)$Area_27
+fle$subdiv2 <- over(fle_pts, shape)$AreasList
+
+# Rename subdivisions to the more common names and do some more filtering (by sub div and area)
+sort(unique(cod$subdiv))
+sort(unique(fle$subdiv))
+
+cod <- cod %>% 
+  mutate(SubDiv = factor(subdiv),
+         SubDiv = fct_recode(subdiv,
+                             "24" = "3.d.24",
+                             "25" = "3.d.25",
+                             "26" = "3.d.26",
+                             "27" = "3.d.27",
+                             "28" = "3.d.28.2"),
+         SubDiv = as.character(SubDiv)) %>% 
+  filter(SubDiv %in% c("24", "25", "26", "27", "28")) %>% 
+  filter(lat > 54 & lat < 58 & long < 22)
+
+fle <- fle %>% 
+  mutate(SubDiv = factor(subdiv),
+         SubDiv = fct_recode(subdiv,
+                             "24" = "3.d.24",
+                             "25" = "3.d.25",
+                             "26" = "3.d.26",
+                             "27" = "3.d.27",
+                             "28" = "3.d.28.2",
+                             "29" = "3.d.29"),
+         SubDiv = as.character(SubDiv)) %>% 
+  filter(SubDiv %in% c("24", "25", "26", "27", "28", "29")) %>% 
+  filter(lat > 54 & lat < 58 & long < 22)
+```
+
 ## Save data for further analysis
 
 ```{r save data}
@@ -549,12 +601,13 @@ colnames(cod)
 cod_save <- cod %>%
   dplyr::select(FR_tot, FR_sad, FR_spr, saduria_entomon_tot, tot_prey_biom, common_tot, unique_pred_id,
                 year, quarter, time_period, quarter_fact, pred_weight_g, pred_cm, predator_spec, predcod_density,
-                predfle_density, predcod_density_sc, predfle_density_sc, depth, X, Y, lat, long, ices_rect, cruise)
+                predfle_density, predcod_density_sc, predfle_density_sc, depth, X, Y, lat, long, ices_rect,
+                SubDiv, cruise)
 
 fle_save <- fle %>%
   dplyr::select(FR_tot, FR_sad, FR_spr, saduria_entomon_tot, tot_prey_biom, common_tot, unique_pred_id,
                 year, quarter, pred_weight_g, pred_cm, predator_spec, predcod_density, predfle_density,
-                predcod_density_sc, predfle_density_sc, depth, X, Y, lat, long, ices_rect, cruise)
+                predcod_density_sc, predfle_density_sc, depth, X, Y, lat, long, ices_rect, SubDiv, cruise)
 
 write.csv(cod_save, "data/cod_diet_analysis.csv")
 write.csv(fle_save, "data/fle_diet_analysis.csv")
