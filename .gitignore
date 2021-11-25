@@ -27,9 +27,11 @@ vignettes/*.pdf
 # Guides
 /R/guides/
 
-# Large data files
+# Large data files and data we cannot share yet
 /data/depth_geo_tif/
 /data/ICES_StatRec_mapto_ICES_Areas/
+/data/saduria_tif
+/data/
 
 # Large model output files
 /output/
