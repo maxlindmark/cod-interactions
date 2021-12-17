@@ -75,35 +75,34 @@ theme_clean <- function() {
 ```{r read and plot data}
 # These data are for total and prey specific stomach models
 # These data are for the diet analysis (all prey groups)
-cod_prey <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/cod_interactions/data/pca_cod_diet_analysis.csv") %>% dplyr::select(-X1) %>% mutate(species = "COD") %>% filter(year > 2014) %>% filter(!quarter == 2) %>% droplevels()
+cod_prey <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/cod_interactions/data/cod_diet_full_analysis.csv") %>% dplyr::select(-X1) %>% mutate(species = "COD") %>% filter(year > 2014) %>% filter(!quarter == 2) %>% droplevels()
 
-fle_prey <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/cod_interactions/data/pca_fle_diet_analysis.csv") %>% dplyr::select(-X1) %>% mutate(species = "FLE") %>% filter(!quarter == 2) %>% droplevels()
+fle_prey <- readr::read_csv("/Users/maxlindmark/Desktop/R_STUDIO_PROJECTS/cod_interactions/data/fle_diet_full_analysis.csv") %>% dplyr::select(-X1) %>% mutate(species = "FLE") %>% filter(!quarter == 2) %>% droplevels()
 ```
 
 ## Prepare data for calculating Bray-Curtis dissimilarity index
 
 ```{r prep data and run examples}
 # Following this: https://www.davidzeleny.net/anadat-r/doku.php/en:hier-agglom_examples
-data(BCI)  # example using Baro Colorado data
-
-BCI.log <- log1p(BCI) 
-
-str(BCI.log)
-BCI.log
-head(BCI.log)
-nrow(BCI.log)
-
-bc.dist <- vegdist(BCI.log, method = 'bray')
-bc.dist
-print(bc.dist, diag = TRUE)
-
-clust <- agnes(sqrt (bc.dist), method = 'ward') # calculate Ward's algorithm 
-plot(clust, which.plot = 2)
+# data(BCI)  # example using Baro Colorado data
+# 
+# BCI.log <- log1p(BCI) 
+# 
+# str(BCI.log)
+# BCI.log
+# head(BCI.log)
+# nrow(BCI.log)
+# 
+# bc.dist <- vegdist(BCI.log, method = 'bray')
+# bc.dist
+# print(bc.dist, diag = TRUE)
+# 
+# clust <- agnes(sqrt (bc.dist), method = 'ward') # calculate Ward's algorithm 
+# plot(clust, which.plot = 2)
+# head(BCI.log)
+# head(BCI.log)
 
 # Now do diet data
-head(BCI.log)
-head(BCI.log)
-
 head(data.frame(cod_prey))
 str(cod_prey)
 colnames(cod_prey)
@@ -112,9 +111,10 @@ hist(cod_prey$pred_cm)
 
 # Prepare the cod data
 cod_prey <- cod_prey %>% filter(pred_cm < 75)
+
 cod_prey2 <- cod_prey %>% 
   mutate(size_class = paste(cut(pred_cm, breaks = c(seq(0, 100, 5))), "C", sep = "_")) %>% 
-  dplyr::select(c(14:29, 31)) %>% 
+  dplyr::select(c(15:30, 32)) %>% 
   pivot_longer(1:16) %>% 
   group_by(size_class, name) %>% 
   summarise(mean_prey = mean(value)) %>% 
@@ -126,9 +126,11 @@ cod_prey2 <- cod_prey2 %>% dplyr::select(-size_class)
 cod_prey2
 
 # Prepare the flounder data
+fle_prey <- fle_prey %>% filter(pred_cm < 40)
+
 fle_prey2 <- fle_prey %>% 
   mutate(size_class = paste(cut(pred_cm, breaks = c(seq(0, 100, 5))), "F", sep = "_")) %>% 
-  dplyr::select(c(14:29, 31)) %>% 
+  dplyr::select(c(15:30, 32)) %>% 
   pivot_longer(1:16) %>% 
   group_by(size_class, name) %>% 
   summarise(mean_prey = mean(value)) %>% 
@@ -146,21 +148,12 @@ dd <- bind_rows(fle_prey2, cod_prey2)
 dist <- vegdist(dd, method = 'bray')
 print(dist, diag = TRUE)
 
+# https://rstudio-pubs-static.s3.amazonaws.com/479856_baf1b4d8a4d0419b967f02020f9637d5.html
 clust <- agnes(sqrt(dist), method = 'ward') # calculate Ward's algorithm 
-plot(clust, which.plot = 2)
 
-groups <- cutree(clust, k = 5)
-groups 
-
-clust.hclust <- as.hclust(clust)
-group.order <- groups[clust.hclust$order]
-group.order
-group.in.cluster <- unique (group.order)
-group.in.cluster
-
-plot(clust.hclust)
-rect.hclust(clust.hclust, border = group.in.cluster, k = 5) 
-legend ('topleft', legend = paste ('Cluster', 1:5), pch = 22, col = 1:5, bty = 'n')
+png(file="figures/diet_bray_dendro.png", width=600, height=350)
+plot(clust, which.plot = 2, main = NA, xlab = NA, sub = NA)
+dev.off()
 
 NMDS <- metaMDS(vegdist(dd))  # note that I could use also "NMDS <- metaMDS (bc.dist)" here
 # Ggplotting it... https://chrischizinski.github.io/rstats/vegan-ggplot2/
@@ -187,21 +180,22 @@ spec_size_scores <- spec_size_scores %>%
 
 # https://jonlefcheck.net/2012/10/24/nmds-tutorial-in-r/
 
-ggplot() + 
+p1 <- ggplot() + 
   geom_point(data = spec_size_scores, aes(x = NMDS1, y = NMDS2, color = Species, size = Size), alpha = 0.5) +  # add the species labels
-  scale_size(range = c(0, 13), breaks = c(10, 20, 30, 40, 50, 60, 70)) +
+  scale_size(range = c(0, 10), breaks = c(10, 20, 30, 40, 50, 60, 70)) +
   scale_color_brewer(palette = "Dark2") + 
   theme_light(base_size = 14) +
   coord_equal() +
+  # theme(legend.position = "bottom",
+  #       legend.direction = "horizontal") +
   # annotation_custom(codlogo2, xmin = 0.1, xmax = 0.3, ymin = 0.1, ymax = 0.3) +
   # annotation_custom(flelogo2, xmin = -0.4, xmax = -0.2, ymin = -0.4, ymax = -0.2) +
   NULL
 
-ggsave("figures/nmds_species_size.png", width = 6.5, height = 6.5, dpi = 600)
+ggsave("figures/diet_bray_nmds_species_size.png", width = 6.5, height = 6.5, dpi = 600)
 
 # https://jonlefcheck.net/2012/10/24/nmds-tutorial-in-r/
 stressplot(NMDS)
-
 ```
 
 
