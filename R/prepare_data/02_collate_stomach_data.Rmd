@@ -1,0 +1,782 @@
+---
+title: "Merging and cleaning stomach data from different sources"
+author: "Max Lindmark"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, cache=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 12,
+  fig.asp = 0.618,
+  fig.align ='center'
+)
+```
+
+**Data to merge:**
+Stomach data, biological data and trawl data
+When preparing (standardizing, filtering, expanding, merging) these data, there are a few things to know:
+
+1) Column names: Even though the data format *should* in theory be fairly standardized already, there are many differences in column names. Some of them are due to different spelling, some are just different. Like predator ID, sometimes it's sample, sometimes it's otolith ID, for instance.
+
+2) Coordinates: Stomach data needs to be joined with trawl data to get the spatial location of the stomach. This is done by creating a unique haul ID. However, due to missing values in the columns that make up the ID, we are not able to link all stomach data to a haul
+
+3) Empty stomachs: empty stomach is indicated by a column. However, this is not fool proof (no column in these data are 100% without missing information), since I get slightly different proportions of empty stomachs when manually calculating the proportion of predator ID's with a total count of prey weight = 0. This is in cases when prey_latin_name or prey_sp_code == NA and/or prey_weight is NA and there is only a single row for that predator ID. 
+
+4) One row = One prey: The data has a column indicating the number of prey that specific row corresponds to, so I need to repeat that row X times to get one row = one prey.
+
+In addition to these points, there are numerous small little fixes and quality checks here and there (e.g., filtering impossible prey sizes etc.)
+
+## First load packages
+
+```{r load libraries, message=FALSE, warning=TRUE}
+# options(max.print = 5000)
+# Load libraries, install if needed
+library(tidyverse)
+library(readxl)
+library(tidylog)
+library(RCurl)
+library(RColorBrewer)
+library(patchwork)
+library(janitor)
+library(mapplots)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(forcats)
+library(gapminder)
+library(viridis)
+library(ggridges)
+library(raster)
+library(icesDatras)
+library(raster)
+library(sp)
+
+# Source UTM function
+source("/Users/maxlindmark/Dropbox/Max work/R/cod_interactions/R/functions/lon_lat_utm.R")
+
+# Source code for map plots
+source("/Users/maxlindmark/Dropbox/Max work/R/cod_interactions/R/functions/map_plot.R")
+
+theme_set(theme_plot())
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+xlim <- c(8, 22)
+ylim <- c(54, 60)
+```
+
+# Load stomach, biological and trawl data
+## Stomach
+
+```{r merge stomach, message=FALSE, results="hide"}
+# Flounder
+bits_2015_q4_fle <- readxl::read_xls("data/stomach_data/BITS/stomach/2017-10-31_database_COD_FLE_part_2_Kevin.xls", sheet = 3) %>% 
+  mutate(Year = 2015) %>% 
+  clean_names()
+
+bits_2016_q1_fle <- readxl::read_xls("data/stomach_data/BITS/stomach/2017-10-31_database_COD_FLE_part_2_Kevin.xls", sheet = 4) %>% 
+  clean_names()
+
+bits_2016_q4_fle <- readxl::read_xls("data/stomach_data/BITS/stomach/2017-10-31_database_COD_FLE_part_2_Kevin.xls", sheet = 5) %>% 
+  clean_names()
+
+bits_2017_q1_fle <- readxl::read_xlsx("data/stomach_data/BITS/stomach/02.01.2019_database_COD_FLE.xlsx", sheet = 1) %>% 
+  clean_names()
+
+bits_2017_q4_fle <- readxl::read_xlsx("data/stomach_data/BITS/stomach/02.01.2019_database_COD_FLE.xlsx", sheet = 2) %>% 
+  clean_names() %>% 
+  mutate(year = 2017)
+
+bits_2018_q1_fle <- readxl::read_xlsx("data/stomach_data/BITS/stomach/database_22.12.2019_part 2.xlsx", sheet = 2) %>% 
+  clean_names()
+
+bits_2019_q4_fle <- readxl::read_xlsx("data/stomach_data/BITS/stomach/!database_2020_SWE.xlsx", sheet = 4) %>% 
+  clean_names()
+
+bits_2020_q1_fle <- readxl::read_xlsx("data/stomach_data/BITS/stomach/!database_2020_SWE.xlsx", sheet = 5) %>% 
+  clean_names()
+
+# Cod
+bits_2015_q4_cod <- readxl::read_xls("data/stomach_data/BITS/stomach/2017-06-29_database_COD_part_1_Kevin.xls", sheet = 1) %>% 
+  clean_names()
+
+bits_2016_q1_cod <- readxl::read_xls("data/stomach_data/BITS/stomach/2017-06-29_database_COD_part_1_Kevin.xls", sheet = 2) %>% 
+  clean_names()
+
+# This q-year combo was sent in two batches
+bits_2016_q1_cod_v2 <- readxl::read_xlsx("data/stomach_data/BITS/stomach/28.12.2018_database_COD.xlsx", sheet = 1) %>% 
+  clean_names()
+
+bits_2016_q4_cod <- readxl::read_xls("data/stomach_data/BITS/stomach/2017-10-31_database_COD_FLE_part_2_Kevin.xls", sheet = 6) %>% 
+  clean_names()
+
+bits_2017_q1_cod <- readxl::read_xlsx("data/stomach_data/BITS/stomach/28.12.2018_database_COD.xlsx", sheet = 2) %>% 
+  clean_names() %>% 
+  mutate(predator_code = "COD")
+
+bits_2017_q4_cod <- readxl::read_xlsx("data/stomach_data/BITS/stomach/28.12.2018_database_COD.xlsx", sheet = 3) %>% 
+  clean_names()
+
+bits_2018_q1_cod <- readxl::read_xlsx("data/stomach_data/BITS/stomach/9.07.2019_database_part 1.xlsx", sheet = 2) %>% 
+  clean_names()
+
+bits_2018_q4_cod <- readxl::read_xlsx("data/stomach_data/BITS/stomach/database_22.12.2019_part 2.xlsx", sheet = 1) %>% 
+  clean_names()
+
+bits_2019_q4_cod <- readxl::read_xlsx("data/stomach_data/BITS/stomach/!database_2020_SWE.xlsx", sheet = 2) %>% 
+  clean_names()
+
+bits_2020_q1_cod <- readxl::read_xlsx("data/stomach_data/BITS/stomach/!database_2020_SWE.xlsx", sheet = 3) %>% 
+  clean_names() %>% 
+  mutate(quarter = 1,
+         predator_code = "COD")
+
+# Bind them together, then see what columns are missing from the base data
+colnames(bits_2015_q4_fle)
+colnames(bits_2016_q1_fle)
+colnames(bits_2016_q4_fle)
+colnames(bits_2017_q1_fle)
+colnames(bits_2017_q4_fle)
+colnames(bits_2018_q1_fle)
+colnames(bits_2019_q4_fle)
+colnames(bits_2020_q1_fle)
+           
+colnames(bits_2015_q4_cod)
+colnames(bits_2016_q1_cod)
+colnames(bits_2016_q1_cod_v2)
+colnames(bits_2017_q1_cod)
+colnames(bits_2017_q4_cod)
+colnames(bits_2018_q1_cod)
+colnames(bits_2018_q4_cod)
+colnames(bits_2019_q4_cod)
+colnames(bits_2020_q1_cod)
+
+# Looks like we have to bind_rows them and clean column names afterwards since they don't match...
+stom <- bind_rows(bits_2015_q4_fle %>% mutate(hn = as.character(hn),
+                                              sample_12 = as.character(sample_12)),
+                  bits_2016_q1_fle,
+                  bits_2016_q4_fle %>% mutate(prey_weight = as.numeric(prey_weight),
+                                              sample_12 = as.character(sample_12)),
+                  bits_2017_q1_fle %>% mutate(hn = as.character(hn)),
+                  bits_2017_q4_fle %>% mutate(hn = as.character(hn),
+                                              parasites_in_stomach = as.character(parasites_in_stomach)),
+                  bits_2018_q1_fle,
+                  bits_2019_q4_fle %>% mutate(parasites_in_stomach = as.character(parasites_in_stomach)),
+                  bits_2020_q1_fle %>% mutate(hn = as.character(hn),
+                                              sample = as.character(sample)),
+                  bits_2015_q4_cod %>% mutate(hn = as.character(hn),
+                                              parasites_in_stomach = as.character(parasites_in_stomach),
+                                              predator_gutted_weight = as.numeric(predator_gutted_weight),
+                                              maturity = as.numeric(maturity)),
+                  bits_2016_q1_cod %>% mutate(sample_1 = as.character(sample_1),
+                                              sample_12 = as.character(sample_12),
+                                              hn = as.character(hn),
+                                              parasites_in_stomach = as.character(parasites_in_stomach),
+                                              predator_gutted_weight = as.numeric(predator_gutted_weight),
+                                              maturity = as.numeric(maturity)),
+                  bits_2016_q1_cod_v2 %>% mutate(hn = as.character(hn),
+                                                 stomach_state = as.character(stomach_state)),
+                  bits_2017_q1_cod %>% mutate(stomach_state = as.character(stomach_state),
+                                              gall_bladder = as.character(gall_bladder)),
+                  bits_2017_q4_cod %>% mutate(hn = as.character(hn),
+                                              stomach_state = as.character(stomach_state),
+                                              gall_bladder = as.character(gall_bladder)),
+                  bits_2018_q1_cod %>% mutate(hn = as.character(hn),
+                                              sample = as.character(sample)),
+                  bits_2018_q4_cod %>% mutate(hn = as.character(hn),
+                                              gall_bladder = as.character(gall_bladder)),
+                  bits_2019_q4_cod %>% mutate(hn = as.character(hn),
+                                              parasites_in_stomach = as.character(parasites_in_stomach),
+                                              sample = as.character(sample),
+                                              gall_bladder = as.character(gall_bladder)),
+                  bits_2020_q1_cod %>% mutate(hn = as.character(hn),
+                                              parasites_in_stomach = as.character(parasites_in_stomach),
+                                              stomach_state = as.character(stomach_state),
+                                              sample = as.character(sample),
+                                              gall_bladder = as.character(gall_bladder))
+                  )
+
+# Now fix the "sample" column. It's sometimes sample, sample_1, sometimes sample_12
+stom <- stom %>% 
+  mutate(data_id = paste(year, quarter, predator_code, sep = "_"))
+  
+stom %>% 
+  summarise(sample_na = unique(is.na(sample)),
+            sample_1_na = unique(is.na(sample_1)),
+            sample_12_na = unique(is.na(sample_12))) %>% 
+  ungroup() %>% 
+  mutate(sample_na = ifelse(sample_na == "FALSE", 1, 0),
+         sample_1_na = ifelse(sample_1_na == "FALSE", 1, 0),
+         sample_12_na = ifelse(sample_12_na == "FALSE", 1, 0),
+         sum = sample_na + sample_1_na + sample_12_na) %>% 
+  as.data.frame()
+
+# Ok, most data have either/or, but some have multiple and some have 0....
+unique(is.na(bits_2020_q1_fle$sample))
+
+bits_2020_q1_fle %>% drop_na(sample)
+bits_2016_q4_fle %>% drop_na(sample_1)
+bits_2016_q4_fle %>% drop_na(sample_12)
+
+# The zeroes simply have no sample, not too many rows though... What about the multiple ones?
+stom %>% 
+  mutate(sample_na = ifelse(is.na(sample), 1, 0),
+         sample_1_na = ifelse(is.na(sample_1), 1, 0),
+         sample_12_na = ifelse(is.na(sample_12), 1, 0),
+         sum = sample_na + sample_1_na + sample_12_na) %>%
+  group_by(data_id) %>% 
+  summarise(sum2 = median(sum)) %>% 
+  ungroup() %>% 
+  as.data.frame()
+
+stom %>% 
+  mutate(sample_na = ifelse(is.na(sample), 0, 1),
+         sample_1_na = ifelse(is.na(sample_1), 0, 1),
+         sample_12_na = ifelse(is.na(sample_12), 0, 1),
+         sum = sample_na + sample_1_na + sample_12_na) %>% 
+  filter(sum > 1) %>%
+  as.data.frame() %>% 
+  ggplot(aes(as.numeric(sample_1), as.numeric(sample_12))) + 
+  geom_point() + 
+  geom_abline(color = "red", size = 0.5)
+
+# Ok, so sample_1 and sample_12 are the same. They get the appendix because there are duplicate columns. This is also verified in a excel file. Rename!
+stom <- stom %>% 
+  mutate(sample = ifelse(is.na(sample), sample_1, sample),
+         sample = ifelse(is.na(sample), sample_12, sample)) %>% 
+  drop_na(sample) %>% 
+  dplyr::select(-sample_1, -sample_12)
+
+colnames(stom)
+str(stom)
+
+# column "sqare" a typo
+stom <- stom %>% 
+  mutate(square = ifelse(is.na(square), sqare, square)) %>% 
+  dplyr::select(-sqare)
+
+# Good for now. Now read the bottom trawl data and the biological data from the trawls
+```
+
+## Trawl
+
+```{r merge trawl data}
+# Read in trawl data. There's one file for cod and one for flounder
+# They go up to 2020 Q1
+trawl_surveys_1_I <- read.csv("data/stomach_data/BITS/trawl/trawl_surveys_zincl_(l) (3).csv", sep = ";")
+trawl_surveys_2_I <- read.csv("data/stomach_data/BITS/trawl/trawl_surveys_zincl_(l) (4).csv", sep = ";")
+
+# Combine for the two species, filter and clean!
+trawl_data <- rbind(trawl_surveys_1_I, trawl_surveys_2_I) %>%
+  clean_names() %>% 
+  filter(year >= min(stom$year))
+
+str(trawl_data)
+
+# Make them numeric
+trawl_data$lat <- as.numeric(gsub(",", "\\.", trawl_data$lat))
+trawl_data$long <- as.numeric(gsub(",", "\\.", trawl_data$long))
+trawl_data$bottom_depth <- as.numeric(gsub(",", "\\.", trawl_data$bottom_depth))
+trawl_data$bottom_depth <- as.numeric(gsub(",", "\\.", trawl_data$bottom_depth))
+trawl_data$dist <- as.numeric(gsub(",", "\\.", trawl_data$dist))
+trawl_data$swept_area <- as.numeric(gsub(",", "\\.", trawl_data$swept_area))
+trawl_data$kg_hour <- as.numeric(gsub(",", "\\.", trawl_data$kg_hour))
+trawl_data$tot_no_hour <- as.numeric(gsub(",", "\\.", trawl_data$tot_no_hour))
+trawl_data$no_hour <- as.numeric(gsub(",", "\\.", trawl_data$no_hour))
+trawl_data$no_hour <- as.numeric(gsub(",", "\\.", trawl_data$no_hour))
+
+# For these coordinates, we can use the function Fede provided:
+format.position <- function(x){
+  sign.x <- sign(x)
+  x <- abs(x)
+  x <- ifelse(nchar(x)==3, paste("0",x,sep=""), x)
+  x <- ifelse(nchar(x)==2, paste("00",x,sep=""), x)
+  x <- ifelse(nchar(x)==1, paste("000",x,sep=""), x)
+  dec.x <- as.numeric(paste(substring(x,1,2)))+as.numeric(paste(substring(x,3,4)))/60
+  dec.x <- sign.x*dec.x
+}
+
+# Apply function
+trawl_data$lat <- format.position(trawl_data$lat)
+trawl_data$lon <- format.position(trawl_data$long)
+```
+
+## Biological data
+
+```{r}
+trawl_surveys_s_cod <- read.csv("data/stomach_data/BITS/biological/trawl_surveys_(s) (7).csv", sep = ";") # Cod
+trawl_surveys_s_flounder <- read.csv("data/stomach_data/BITS/biological/trawl_surveys_(s) (8).csv", sep = ";") # Flounder
+
+trawl_surveys_s_cod$Species <- "Cod"
+trawl_surveys_s_flounder$Species <- "Flounder"
+
+bio_data <- bind_rows(trawl_surveys_s_cod, trawl_surveys_s_flounder) %>%
+  clean_names() %>% 
+  filter(year >= min(stom$year)) %>% 
+  dplyr::select(-x, -x_1)
+```
+
+## Join trawl and biological data, and then stomach
+
+```{r join trawl and biological}
+# Join the trawl, bio and stomach data. First create a unique ID. Sample is otolith number (fish ID!)
+# We need to join bio + trawl first, because we need lat and lon to get the ices_rect in case it's missing (it is in many places in the bio data)
+# First need to standardize some columns... 
+bio_data <- bio_data %>% rename("sample" = "otolith_no") # There are three "Otolith.no" that are the same in two different fish id
+
+# First find a unique ID
+# Add a new species code in the trawl data that matches the stomach data 
+trawl_data <- trawl_data %>% mutate(predator_code = ifelse(species == "Cod", "COD", "FLE"))
+bio_data <- bio_data %>% mutate(predator_code = ifelse(species == "Cod", "COD", "FLE"))
+
+unique(is.na(trawl_data[, c("year", "quarter", "haul")]))
+
+# Go ahead
+trawl_data$haul_id <- paste(trawl_data$year,
+                            trawl_data$quarter,
+                            trawl_data$haul,
+                            sep = "_")
+
+# Should be a unique ID per length and predator code
+trawl_data %>% 
+  group_by(haul_id, lengthcl, predator_code) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  distinct(n)
+
+# Now we want the cpue of a species-size combination as a column, then make it distinct per haul
+trawl_data_unique_haul <- trawl_data %>% 
+  dplyr::select(-species, -lengthcl, -predator_code, -kg_hour, -tot_no_hour, -mean_weight, -no_hour, -length_measure_type, -sex, -long) %>% # Remove any column that has anything to do with catch, because that info should come from the species dataframes below. I.e., after left_joining this and the catch data, any 0 zero catches should be NA in the joined data
+  distinct(haul_id, .keep_all = TRUE)
+
+trawl_data_cod <- trawl_data %>% 
+  filter(predator_code == "COD") %>% 
+  mutate(kg = kg_hour * (duration / 60),
+         kg_km2 = kg / swept_area) %>% # make it biomass density
+  drop_na(kg_hour) %>% # remove NA kg_hour (mostly non-valid hauls. These are not true 0 catches!)
+  mutate(size_group = ifelse(lengthcl < 250, "small", "large")) %>% 
+  group_by(haul_id, size_group) %>% 
+  summarise(kg_km2 = sum(kg_km2)) %>% 
+  pivot_wider(names_from = size_group, values_from = kg_km2) %>% 
+  rename(lcod_kg_km2 = large,
+         scod_kg_km2 = small) %>% 
+  mutate(lcod_kg_km2 = replace_na(lcod_kg_km2, 0),
+         scod_kg_km2 = replace_na(scod_kg_km2, 0))
+
+# Ok, so because this is catches (no hauls with no fish... the only reason I have 0 catches is if one of the size-groups doesn't have a catch!)
+
+# Check with a haul_id
+trawl_data %>% 
+  filter(predator_code == "COD" & haul_id == "2015_1_20") 
+trawl_data_cod
+# Remember, I do not need to worry about 0 catches here, because I can't have 0 catches and a stomach... because this data is for adding catch-covariates to stomach data...
+
+# Now do the same for flounder and join with the cod data, then with haul data!
+# Different code because we do not need to worry about size
+trawl_data_fle <- trawl_data %>% 
+  filter(predator_code == "FLE") %>% 
+  mutate(kg = kg_hour * (duration / 60),
+         kg_km2 = kg / swept_area) %>% # make it biomass density
+  drop_na(kg_hour) %>% # remove NA kg_hour (mostly non-valid hauls. These are not true 0 catches!)
+  group_by(haul_id) %>% 
+  summarise(fle_kg_km2 = sum(kg_km2))
+
+trawl_data_fle
+trawl_data_cod
+
+# Join and remove hauls that do not match
+trawl_data_wide <- full_join(trawl_data_fle, trawl_data_cod, by = "haul_id") %>%
+  drop_na(fle_kg_km2, lcod_kg_km2, scod_kg_km2)
+
+# Join in the rest of the haul information
+trawl_data_wide <- left_join(trawl_data_wide, trawl_data_unique_haul)
+
+# length(unique(trawl_data_wide2$haul_id))
+# length(unique(trawl_data_unique_haul$haul_id))
+
+# Now add in the same ID in the bio_data
+unique(is.na(bio_data[, c("year", "quarter", "haul")]))
+
+# Go ahead
+bio_data$haul_id <- paste(bio_data$year,
+                          bio_data$quarter,
+                          bio_data$haul,
+                          sep = "_")
+                                
+unique(bio_data$haul_id)
+
+# Now join in trawl data into the bio data (and then into stomach data)
+colnames(bio_data)
+colnames(trawl_data_wide)
+
+# Check first for overlapping columns, and if so, if one of the datasets has any NAs
+common_cols <- intersect(colnames(bio_data), colnames(trawl_data_wide))
+
+unique(is.na(trawl_data_wide[, common_cols]))
+unique(is.na(bio_data[, common_cols]))
+
+# Nope, then go ahead and select only the important columns from the trawl data
+colnames(trawl_data_wide)[!colnames(trawl_data_wide) %in% colnames(bio_data)]
+
+trawl_data_wide <- trawl_data_wide %>% dplyr::select(haul_id, fle_kg_km2, lcod_kg_km2, scod_kg_km2, lat, lon, bottom_depth)
+
+bio_data <- left_join(bio_data, trawl_data_wide, by = "haul_id") %>% 
+  drop_na(fle_kg_km2, lcod_kg_km2, scod_kg_km2) #  This is because there are haul_ids that are not in the bio_data
+```
+
+Join trawl_bio data with stomach data
+
+```{r}
+# Now create a "bio_id" in the stomach + (bio + trawl) data frames
+unique(is.na(bio_data[, c("year", "quarter", "sample", "predator_code")]))
+sort(unique(stom$sample))
+
+bio_data$pred_id <- paste(bio_data$year,
+                          bio_data$quarter,
+                          bio_data$predator_code,
+                          bio_data$sample,
+                          sep = "_")
+
+# Check it out
+bio_data %>% 
+  group_by(pred_id) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  distinct(n)
+
+# There are some IDs rows with more than one row per individual (id), and the only thing separating those is the fishno column, which doesn't exist in the biological data. It's only 30 rows though.
+bio_data %>% 
+  group_by(pred_id) %>% 
+  mutate(n = n()) %>% 
+  filter(n > 1) %>% 
+  arrange(pred_id) %>% 
+  as.data.frame()
+
+# With a longer id string I could have perhaps saved some data, but there aren't any more columns that I can use that doesn't have NA in one or the other data sets
+bio_data <- bio_data %>% 
+  group_by(pred_id) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  filter(n == 1) %>% 
+  dplyr::select(-n)
+
+# Create the same ID in the stomach data
+unique(is.na(stom[, c("year", "quarter", "sample", "predator_code")]))
+sort(unique(stom$sample))
+
+# Need to remove these... because they mess up the join with biological data further down. Tricky beause they don't show up as NA...
+# "?"    "?1"   "?2"   "?3"   "?4"   "?5"   "?6"
+
+stom <- stom %>% filter(!sample %in% c("?", "?1", "?2", "?3", "?4", "?5", "?6"))
+
+stom$pred_id <- paste(stom$year,
+                      stom$quarter,
+                      stom$predator_code,
+                      stom$sample,
+                      sep = "_")
+
+# Join bits_bio_trawl with stomach data by bio-if (predator)
+# First remove duplicate columns
+common_cols <- intersect(colnames(stom), colnames(bio_data))
+
+# And check if there are any NA's...
+unique(is.na(stom[, common_cols]))
+unique(is.na(bio_data[, common_cols]))
+
+# remove year, quarter, sample, predator_code from bio_data
+# remove month, sex from stomach
+# The rest can overlap and I fix them on a row-basis
+stom <- stom %>% dplyr::select(-month, -sex)
+bio_data <- bio_data %>% dplyr::select(-year, -quarter, -sample, -predator_code)
+
+# Join!
+dat <- left_join(stom, bio_data, by = "pred_id")
+
+# Fill in NA values if possible
+intersect(colnames(stom), colnames(bio_data))
+sort(colnames(dat))
+
+dat <- dat %>% 
+  mutate(age = ifelse(is.na(age.x), age.y, age.x),
+         maturity = ifelse(is.na(maturity.x), maturity.y, maturity.x)) %>% 
+  dplyr::select(-age.x, -age.y, -maturity.x, -maturity.y)
+```
+
+Clean data!
+
+```{r clean}
+d <- dat
+
+# Scale up so 1 row = 1 pred and prey. Assume NA is 1. Remove 0 prey nr...
+unique(d$prey_nr)
+filter(d, prey_nr == 0) %>% as.data.frame()
+
+d <- d %>%
+  mutate(prey_nr = replace_na(prey_nr, 1),
+         prey_nr = as.integer(prey_nr)) %>% 
+  filter(prey_nr > 0)
+
+# Replicate rows prey_no times!
+nrow(d)
+
+d2 <- d %>%
+  rename(prey_weight_g = prey_weight,
+         prey_length_cm = prey_size) %>% 
+  mutate(prey_weight_g = prey_weight_g / prey_nr,
+         prey_number_type = ifelse(prey_nr > 1, "un_aggregated_from_average", "unique_id"),
+         prey_weight_type = ifelse(prey_number_type == "un_aggregated_from_average", "pooled", "unique_id")) %>% 
+  uncount(prey_nr)
+
+nrow(d2)
+
+# Now we can plot prop empty stomachs. It seems NA prey weight can be both that the weight is missing, and that there is no prey
+d2 %>%
+  filter(is.na(prey_weight_g)) %>%
+  distinct(prey_sp_code) %>% 
+  arrange(prey_sp_code) %>% 
+  as.data.frame()
+
+d2 %>%
+  filter(is.na(prey_weight_g)) %>%
+  as.data.frame() %>% 
+  ggplot(aes(prey_sp_code)) + 
+  geom_histogram(stat = "count") +
+  theme(axis.text.x = element_text(angle = 90))
+
+# If prey weight AND prey species is NA, set prey weight to 0. If prey are present I can't set weight to zero.
+# Check first if there are any 0 weights with prey present. 
+d2 %>% filter(prey_weight_g == 0) %>% as.data.frame()
+
+# Yes. Change their weights to NA because they are not true zeroes, and set prey weight 0 if both prey species and prey weight is NA, because then I can calculate proportion empty stomachs manually using sum of prey weight per species
+d2 <- d2 %>% 
+  mutate(prey_weight_g = ifelse(!is.na(prey_sp_code) & prey_weight_g == 0, NA, prey_weight_g),
+         prey_weight_g = ifelse(is.na(prey_sp_code) & is.na(prey_weight_g), 0, prey_weight_g))
+
+# Now prey_weight_g == 0 should have only 1 row per predator because it's an empty stomach
+d2 %>% 
+  filter(prey_weight_g == 0) %>% 
+  group_by(pred_id) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  distinct(n)
+
+# Hmm why not?
+d2 %>% 
+  filter(prey_weight_g == 0) %>% 
+  group_by(pred_id) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  filter(n > 1) %>% 
+  arrange(pred_id) %>% 
+  as.data.frame()
+    
+# Because it's not a unique id because I don't have enough columns. Need to remove!
+ids_to_remove <- d2 %>% 
+  filter(prey_weight_g == 0) %>% 
+  group_by(pred_id) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  filter(n > 1)
+
+d2 <- d2 %>% filter(!pred_id %in% ids_to_remove$pred_id)
+
+# Plot proportion empty stomachs by year, quarter and species
+d2 %>% 
+  drop_na(prey_weight_g) %>% # remember, these NA's are just missing weights, not empty stomachs!
+  group_by(year, quarter, predator_code, pred_id) %>%
+  summarise(tot_prey_weight = sum(prey_weight_g)) %>% 
+  mutate(empty_stom = ifelse(tot_prey_weight == 0, "Y", "N")) %>% 
+  ungroup() %>% 
+  group_by(year, quarter, predator_code) %>%
+  count(empty_stom) %>%
+  pivot_wider(values_from = n, names_from = empty_stom) %>% 
+  mutate(prop_empty = Y / (Y + N)) %>% 
+  ggplot(aes(year, prop_empty, color = factor(quarter))) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~predator_code, ncol = 2)
+
+# Fix predator sizes
+unique(d2$lengthcl)
+unique(d2$length_code)
+unique(d2$pred_size)
+t <- d2 %>% distinct(pred_id, .keep_all = TRUE) %>% drop_na(lengthcl)
+t <- d2 %>% distinct(pred_id, .keep_all = TRUE) %>% drop_na(pred_size)
+t <- d2 %>% distinct(pred_id, .keep_all = TRUE) %>% drop_na(pred_weight)
+t <- d2 %>% distinct(pred_id, .keep_all = TRUE) %>% drop_na(predator_gutted_weight)
+
+ggplot(d2) +
+  geom_histogram(aes(pred_weight)) + 
+  facet_wrap(~predator_code, scales = "free_y", ncol = 1)
+  
+ggplot(d2) +
+  geom_histogram(aes(pred_weight/1000)) + 
+  facet_wrap(~predator_code, scales = "free_y", ncol = 1)
+
+ggplot(d2) +
+  geom_histogram(aes(lengthcl)) + 
+  facet_wrap(~predator_code, scales = "free_y", ncol = 1)
+
+ggplot(d2) +
+  geom_histogram(aes(lengthcl)) + 
+  facet_wrap(~predator_code, scales = "free_y", ncol = 1)
+
+ggplot(d2) +
+  geom_histogram(aes(lengthcl / 10)) + 
+  facet_wrap(~predator_code, scales = "free_y", ncol = 1) + 
+  scale_x_continuous(breaks = seq(0, 100, 5))
+
+d2 <- d2 %>% 
+  rename(pred_weight_g = pred_weight) %>% 
+  mutate(pred_length_cm = lengthcl / 10,
+         pred_length_cm = ifelse(is.na(pred_length_cm), pred_size / 10, pred_length_cm),
+         pred_weight_source = ifelse(is.na(pred_weight_g), "estimated_from_length", "measured"),
+         pred_weight_g = ifelse(pred_weight_source == "estimated_from_length", 0.01*pred_length_cm^3, pred_weight_g)) %>% 
+  drop_na(pred_weight_g) %>% 
+  dplyr::select(-pred_size)
+
+# Fix ices_rec
+unique(d2$square)
+unique(d2$ices)
+
+d2 <- d2 %>% 
+  mutate(ices_rect = square,
+         ices_rect = ifelse(is.na(ices_rect), ices, ices_rect),
+         ices_rect = ifelse(is.na(ices_rect), ices.rect2(lon, lat), ices_rect)) %>%
+  dplyr::select(-square, -ices)
+
+unique(is.na(d2$ices_rect))
+
+
+# Add UTM coords
+d2 <- d2 %>% drop_na(lat, lon)
+
+utm_coords <- LongLatToUTM(d2$lon, d2$lat, zone = 33)
+d2$X <- utm_coords$X/1000
+d2$Y <- utm_coords$Y/1000
+
+# Add in ICES sub-divisions
+shape <- shapefile("data/ICES_StatRec_mapto_ICES_Areas/StatRec_map_Areas_Full_20170124.shp")
+
+pts <- SpatialPoints(cbind(d2$lon, d2$lat), 
+                     proj4string = CRS(proj4string(shape)))
+
+d2$subdiv <- over(pts, shape)$Area_27
+
+# Rename subdivisions to the more common names and do some more filtering (by sub div and area)
+sort(unique(d2$subdiv))
+
+d2 <- d2 %>% 
+  mutate(subdiv = factor(subdiv),
+         subdiv = fct_recode(subdiv,
+                         "24" = "3.d.24",
+                         "25" = "3.d.25",
+                         "26" = "3.d.26",
+                         "27" = "3.d.27",
+                         "28" = "3.d.28.2"))
+
+plot_map + 
+  geom_point(data = d2, aes(x = X*1000, y = Y*1000, color = subdiv), size = 1) +
+  facet_wrap(~year)
+
+
+# Rename and select key columns
+d3 <- d2 %>% 
+  rename(depth = bottom_depth,
+         country = coun, 
+         prey_latin_name = prey_sp_code) %>% 
+  mutate(predator_latin_name = ifelse(predator_code == "COD", "Gadus morhua", "Platichthys flesus")) %>% 
+  dplyr::select(-age, -age_quality, -appr_status, -average_age, -average_weight, -category, -fishno, -gall_bladder, 
+                -gall_content, -gonad_weight_roundfish, -hn, -length_code, -lengthcl, -licznik, -liver_weight_roundfish,
+                -maturity, -max_maturity, -method, -n_empty, -n_regurgitated, -n_skeletal, -n_with_food, -parasites_in_stomach,
+                -predator_gutted_weight, -processing, -rect, -sd, -seqno, -sex, -ship, -subsam, -temp) %>% 
+  filter(validity == "V")
+```
+
+## 6. Check complete data
+Rename some columns and do a brief quality check
+
+```{r explore and clean data}
+glimpse(d3)
+
+# Check some prey weights (unfortunately I can't check all species because I have no idea how big they become)
+d3 %>%
+  filter(prey_latin_name %in% c("Sprattus sprattus") & prey_weight_g > 0.01*16^3) %>% 
+  arrange(desc(prey_weight_g)) %>% 
+  as.data.frame()
+
+# For herring not as much
+d3 %>%
+  filter(prey_latin_name %in% c("Clupea harengus") & prey_weight_g > 0.01*30^3) %>% 
+  arrange(desc(prey_weight_g)) %>% 
+  as.data.frame()
+
+# Saduria? A few.
+d3 %>%
+  filter(prey_latin_name %in% c("Saduria entomon") & prey_weight_g > 10) %>% 
+  arrange(desc(prey_weight_g)) %>% 
+  as.data.frame()
+
+d3 <- d3 %>% 
+  mutate(keep = ifelse(prey_latin_name == "Saduria entomon" & prey_weight_g > 10, "N", "Y")) %>% 
+  filter(keep == "Y") %>% 
+  dplyr::select(-keep)
+
+# Are there prey with length but not weight?
+d3 %>% 
+  filter(is.na(prey_weight_g) & !is.na(prey_length_cm)) %>% 
+  distinct(prey_latin_name)
+
+# Plot size distribution by year
+ggplot(d3, aes(x = pred_length_cm, y = factor(year), group = year)) + 
+  geom_density_ridges(rel_min_height = 0.01, scale = 4, alpha = 0.4) +
+  facet_wrap(~ predator_latin_name)
+
+# Plot size distribution of prey by year
+d3 %>% 
+  drop_na(prey_weight_g) %>% 
+  filter(prey_weight_g > 0) %>% 
+  ggplot(aes(x = prey_weight_g, y = factor(year), group = year)) + 
+  geom_density_ridges(rel_min_height = 0.01, scale = 4, alpha = 0.4) +
+  scale_x_continuous(trans = "log10")
+
+# Plot PPMR by year
+d3 %>% 
+  drop_na(prey_weight_g) %>% 
+  filter(prey_weight_g > 0) %>% 
+  mutate(ppmr = prey_weight_g / pred_weight_g) %>% 
+  ggplot(aes(x = log(ppmr), y = factor(year), group = year)) + 
+  geom_density_ridges(rel_min_height = 0.01, scale = 4, alpha = 0.4)
+
+# How many unique predator lengths per sample (fish)?
+d3 %>% 
+  group_by(pred_id, year) %>% # For each fish ID and pred_size, how many distinct sizes?
+  mutate(n_sizes = length(unique(pred_length_cm))) %>% 
+  ungroup() %>% 
+  distinct(n_sizes, year) %>% 
+  as.data.frame()
+
+# Plot length vs weight
+d3 %>%
+  ggplot(aes(pred_length_cm, pred_weight_g, color = pred_weight_source)) +
+  geom_jitter() +
+  facet_grid(predator_latin_name ~ year)
+```
+
+Save and explore data in another script
+
+```{r}
+d3 %>% filter(year == 2015 & quarter == 4 & sample == 11) %>% as.data.frame()
+
+```
+
+```{r save}
+write.csv(d3, "data/clean/full_stomach_data.csv")
+```

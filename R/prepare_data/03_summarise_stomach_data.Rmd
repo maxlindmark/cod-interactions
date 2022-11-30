@@ -1,0 +1,592 @@
+---
+title: "Summarize diet data for analysis"
+author: "Max Lindmark"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+  df_print: paged
+pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, cache=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 12,
+  fig.asp = 0.618,
+  fig.align ='center'
+)
+```
+
+# Intro
+In this script, I take the collated stomach data set and calculate aggregates (feeding ratio, total weight of prey groups) and predictor variables for diet data, aggregate to get 1 stomach = 1 row per prey type (not prey individual). I also select only the columns I need for model fitting, join environmental covariates and cpue covariates for cod and flounder, and lastly saduria biomass densities.
+
+## Load packages & source functions
+
+```{r load libraries, message=FALSE, warning=TRUE}
+# Load libraries, install if needed
+library(tidyverse)
+library(readxl)
+library(tidylog)
+library(RCurl)
+library(RColorBrewer)
+library(patchwork)
+library(janitor)
+library(forcats)
+library(gapminder)
+library(viridis)
+library(ggridges)
+library(raster)
+library(icesDatras)
+library(ggalluvial)
+library(ggrepel)
+library(ncdf4)
+library(chron)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(mapplots)
+library(geosphere)
+library(quantreg)
+library(brms)
+library(sdmTMB)
+options(mc.cores = parallel::detectCores()) 
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Source code for map plots
+source("/Users/maxlindmark/Dropbox/Max work/R/cod_interactions/R/functions/map_plot.R")
+
+# Load cache
+# qwraps2::lazyload_cache_dir(path = "R/prepare_data/03_clean_stomach_data_cache/html")
+
+theme_set(theme_plot())
+
+# Continuous colors
+options(ggplot2.continuous.colour = "viridis")
+
+# Discrete colors
+scale_colour_discrete <- function(...) {
+  scale_colour_brewer(palette = "Paired")
+}
+
+scale_fill_discrete <- function(...) {
+  scale_fill_brewer(palette = "Paired")
+}
+```
+
+## Read data
+
+```{r read data, warning=FALSE}
+d <- read_csv("data/clean/full_stomach_data.csv") %>%
+  dplyr::select(-...1) 
+```
+
+## Plot data
+
+```{r plot data, warning=FALSE}
+head(data.frame(d))
+
+plot_map_labels_fc +
+  geom_point(data = filter(d, species == "Cod"), aes(x = X*1000, y = Y*1000), size = 0.5) +
+  facet_grid(quarter~year) +
+  ggtitle("Cod")
+
+plot_map_labels_fc +
+  geom_point(data = filter(d, species == "Flounder"), aes(x = X*1000, y = Y*1000), size = 0.5) +
+  facet_grid(quarter~year) +
+  ggtitle("Flounder")
+```
+
+## Summarize and organize data
+We want 1 row = 1 predator and the total weight for each present prey type
+
+```{r summarize data}
+# Calculate total weight of prey by predator ID and prey species (i.e., across prey sizes). First create wide data frame so that I can sum easily across prey groups (columns)
+d_wide <- d %>% 
+  drop_na(prey_weight_g) %>%
+  group_by(pred_id, prey_latin_name) %>% 
+  summarise(tot_prey_weight_g = sum(prey_weight_g)) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = prey_latin_name, values_from = tot_prey_weight_g) %>% 
+  mutate_all(~ifelse(is.na(.), 0, .)) %>% 
+  clean_names()
+  
+# There is now a NA column. But it doesn't matter really, it's just the empty stomachs but these will be empty anyway because all other columns are empty!
+str(d_wide)
+
+d_wide %>%
+  mutate(sum = rowSums(across(where(is.numeric)))) %>% 
+  filter(sum == 0) %>% 
+  distinct(na)
+
+d_wide <- d_wide %>% dplyr::select(-na)
+
+# Now make some calculations and aggregate to some taxonomic level. Since all columns are assigned to some higher level group (or the same group), the sum of these is the total stomach content. Note that I have one group for unidentified clupeids, but also sprat and herring. So if I want the total of some aggregated group, then I need to add all the sub-groups.
+
+sort(colnames(d_wide))
+
+d_wide2 <- d_wide %>% 
+  mutate(amphipoda_tot = gammarus_sp + monoporeia_affinis + 
+             amphipoda,
+         bivalvia_tot =  bivalvia + mytilus_sp + mytilus_sp_2 + mya_arenaria + macoma_balthica + 
+             mytilus_edulis + limecola_balthica + limecola_balthica_2,
+         clupeidae_tot = clupeidae + clupeidae_2,
+         clupea_harengus_tot = clupea_harengus + clupea_harengus_2,
+         gadus_morhua_tot = gadus_morhua,
+         gobiidae_tot = gobiidae + gobiidae_2 + gobius_niger + neogobius_melanostomus,
+         mysidae_tot = mysidae + neomysis_integer + mysis_mixta + mysida + gastrosacus,
+         non_bio_tot = stone + stone_2 + plastic + plastics + sand + wood + carbon + stone_2 + carbon_2 + wood_2 + 
+             litter_plastics + sand_2,
+         other_crustacea_tot = pontoporeia_femorata + pontoporeia_femotara + crangon + 
+             crangon_crangon + idotea_balthica + cumacea + idotea_sp +
+             praunus_flexuosus + crustacea + diastylis_rathkei + palaemon_sp + caridea +
+             copepoda + pontoporeiidae + decapoda + 
+             pontoporeidae, 
+         other_tot = halicryptus_spinulosus + halicryptus_spinulosus_2 + priapulus_caudatus + algae + aglae + 
+             waste + remains + remains_2 + hydrobia_sp + 
+             priapulida + halicryptus + digestive_tract + mucus + mucus_2 + remains_2 + 
+             halicryptus_spinolusus + priapulida_2 + prapulida + priapulus,
+         other_pisces_tot = pisces + pisces_2 + 
+             enchelyopus_cimbrius +
+             gasterosteus_aculeatus + scales + scales_2 +
+             pungitius_pungitius + zoarces_viviparus +
+             ammodytidae +
+             pleuronectidae + gasterosteidae +
+             agonus_cataphractus + myoxocephalus_scorpius,
+         platichthys_flesus_tot = platichthys_flesus,
+         polychaeta_tot = bylgides_sarsi + scoloplos_armiger +
+             phyllodocida + polychaeta + pectinaria_sp + nephtys_ciliata,
+         saduria_entomon_tot = saduria_entomon,
+         sprattus_sprattus_tot = sprattus_sprattus + sprattus_sprattus_2
+         )
+
+# Select only columns aggregated columns (ending with _tot) (all columns (prey) are represented there)
+colnames(d_wide2)
+
+d_wide3 <- d_wide2 %>%
+  dplyr::select(pred_id, ends_with("_tot"))
+
+# Add back in other information about the predator ID
+d_sel <- d %>%
+  dplyr::select(predator_latin_name, species, pred_weight_g, pred_length_cm,
+                year, quarter, month, day, ices_rect, subdiv, haul_id,
+                X, Y, lat, lon, pred_id, depth, pred_weight_source, cruise,
+                fle_kg_km2, lcod_kg_km2, scod_kg_km2
+                ) %>% 
+  distinct(pred_id, .keep_all = TRUE)
+
+d_wide3 <- left_join(d_wide3, d_sel) %>% filter(year > 1992)
+
+# Make separate data frames for cod and flounder. They are wide so that we can easily add columns when calculating aggregate response variables (sums across prey groups)
+d_wide_cod <- d_wide3 %>% filter(grepl("COD", pred_id))
+d_wide_fle <- d_wide3 %>% filter(grepl("FLE", pred_id))
+```
+
+## Find which prey are shared for cod and flounder
+ 
+```{r summarise data}
+long_cod <- d_wide_cod %>%
+  pivot_longer(cols = ends_with("_tot"), names_to = "prey_group", values_to = "tot_prey_weight")
+
+long_fle <- d_wide_fle %>%
+  pivot_longer(cols = ends_with("_tot"), names_to = "prey_group", values_to = "tot_prey_weight")
+
+# Save this data
+long_d <- bind_rows(long_cod, long_fle)
+
+write_csv(long_d, "data/clean/clean_stomach_data_all_prey.csv")
+```
+
+```{r bar plots}
+s_cod_important_prey <- long_cod %>%
+  filter(pred_length_cm <= 25) %>% 
+  group_by(prey_group, year, quarter) %>%
+  summarise(prey_group_tot = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(year, quarter) %>%
+  mutate(percent_by_group = 100 * (prey_group_tot / sum(prey_group_tot))) %>% 
+  ungroup()
+
+l_cod_important_prey <- long_cod %>%
+  filter(pred_length_cm > 25) %>% 
+  group_by(prey_group, year, quarter) %>%
+  summarise(prey_group_tot = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(year, quarter) %>%
+  mutate(percent_by_group = 100 * (prey_group_tot / sum(prey_group_tot))) %>% 
+  ungroup()
+
+fle_important_prey <- long_fle %>%
+  group_by(prey_group, year, quarter) %>%
+  summarise(prey_group_tot = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(year, quarter) %>%
+  mutate(percent_by_group = 100 * (prey_group_tot / sum(prey_group_tot))) %>% 
+  ungroup() %>% 
+  mutate(predator = "flounder")
+
+s_cod_important_prey %>% 
+  ggplot(aes(x = reorder(prey_group, desc(percent_by_group)), y = percent_by_group)) +
+  geom_bar(stat = "identity", position = position_dodge()) + 
+  theme_classic(base_size = 16) + 
+  facet_grid(quarter~year) +
+  theme(axis.text.x = element_text(angle = 90, size = 6)) +
+  labs(x = "Prey group", y = "Percent") + 
+  NULL
+
+s_cod_important_prey %>% 
+  ggplot(aes(x = reorder(prey_group, desc(percent_by_group)), y = percent_by_group)) +
+  geom_bar(stat = "identity", position = position_dodge()) + 
+  theme_classic(base_size = 16) + 
+  facet_grid(quarter~year) +
+  theme(axis.text.x = element_text(angle = 90, size = 6)) +
+  labs(x = "Prey group", y = "Percent") + 
+  NULL
+
+fle_important_prey %>% 
+  ggplot(aes(x = reorder(prey_group, desc(percent_by_group)), y = percent_by_group)) +
+  geom_bar(stat = "identity", position = position_dodge()) + 
+  theme_classic(base_size = 16) + 
+  facet_grid(quarter~year) +
+  theme(axis.text.x = element_text(angle = 90, size = 6)) +
+  labs(x = "Prey group", y = "Percent") + 
+  NULL
+
+# Aggregate all data
+s_cod_important_prey2 <- long_cod %>%
+  filter(pred_length_cm <= 25) %>% 
+  group_by(prey_group, quarter) %>%
+  summarise(sum_tot_prey_weight = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(quarter) %>%
+  mutate(percent_by_group = 100 * (sum_tot_prey_weight / sum(sum_tot_prey_weight))) %>% 
+  ungroup() %>% 
+  mutate(predator = "Cod <= 25 cm")
+
+l_cod_important_prey2 <- long_cod %>%
+  filter(pred_length_cm > 25) %>% 
+  group_by(prey_group, quarter) %>%
+  summarise(sum_tot_prey_weight = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(quarter) %>%
+  mutate(percent_by_group = 100 * (sum_tot_prey_weight / sum(sum_tot_prey_weight))) %>% 
+  ungroup() %>% 
+  mutate(predator = "Cod > 25 cm")
+
+fle_important_prey2 <- long_fle %>%
+  group_by(prey_group, quarter) %>%
+  summarise(sum_tot_prey_weight = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(quarter) %>%
+  mutate(percent_by_group = 100 * (sum_tot_prey_weight / sum(sum_tot_prey_weight))) %>% 
+  ungroup() %>% 
+  mutate(predator = "Flounder")
+  
+plotdat <- bind_rows(s_cod_important_prey2, l_cod_important_prey2, fle_important_prey2)
+
+plotdat %>% 
+  ggplot(aes(x = reorder(prey_group, desc(percent_by_group)), y = percent_by_group)) +
+  geom_bar(stat = "identity", position = position_dodge()) + 
+  theme_classic(base_size = 16) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(x = "Prey group", y = "Percent") + 
+  facet_grid(quarter~predator) +
+  theme(legend.text = element_text(size = 4)) +
+  NULL
+
+plotdat %>% arrange(desc(percent_by_group)) %>% distinct(prey_group) %>% as.data.frame()
+
+plotdat %>% 
+  mutate(prey_group = ifelse(prey_group == "bivalvia_tot", "Bivalvia", prey_group),
+         prey_group = ifelse(prey_group == "mysidae_tot", "Mysidae", prey_group),
+         prey_group = ifelse(prey_group == "clupea_harengus_tot", "Clupea harengus", prey_group),
+         prey_group = ifelse(prey_group == "sprattus_sprattus_tot", "Sprattus sprattus", prey_group),
+         prey_group = ifelse(prey_group == "saduria_entomon_tot", "Saduria entomon", prey_group),
+         prey_group = ifelse(prey_group == "other_crustacea_tot", "Other crustacea", prey_group),
+         prey_group = ifelse(prey_group == "gobiidae_tot", "Gobiidae", prey_group),
+         prey_group = ifelse(prey_group == "other_tot", "Other", prey_group),
+         prey_group = ifelse(prey_group == "other_pisces_tot", "Other pisces", prey_group),
+         prey_group = ifelse(prey_group == "gadus_morhua_tot", "Gadus morhua", prey_group),
+         prey_group = ifelse(prey_group == "polychaeta_tot", "Polychaeta", prey_group),
+         prey_group = ifelse(prey_group == "clupeidae_tot", "Clupeidae", prey_group),
+         prey_group = ifelse(prey_group == "platichthys_flesus_tot", "platichthys_flesus", prey_group),
+         prey_group = ifelse(prey_group == "amphipoda_tot", "Amphipoda", prey_group),
+         prey_group = ifelse(prey_group == "non_bio_tot", "Non-bio", prey_group)) %>% 
+  ggplot(aes(x = reorder(prey_group, desc(percent_by_group)), y = percent_by_group,
+             fill = predator)) +
+  geom_bar(stat = "identity", position = position_dodge()) + 
+  theme(axis.text.x = element_text(angle = 90),
+        legend.position = c(0.8, 0.8)) +
+  labs(x = "Prey group", y = "Percent", fill = "Predator") + 
+  NULL
+
+ggsave("figures/supp/bar_diet_comp.pdf", width = 17, height = 17, units = "cm")
+```
+
+```{r pies}
+colourCount <- length(unique(plotdat$prey_group))
+getPalette <- colorRampPalette(brewer.pal(12, "Paired"))
+pal <- getPalette(colourCount)
+
+plotdat$pred_new <- factor(plotdat$predator, levels = c("Flounder", "Cod <= 25 cm", "Cod > 25 cm")) 
+
+plotdat %>% 
+  mutate(prey_group = ifelse(prey_group == "bivalvia_tot", "Bivalvia", prey_group),
+         prey_group = ifelse(prey_group == "mysidae_tot", "Mysidae", prey_group),
+         prey_group = ifelse(prey_group == "gadus_morhua_tot", "Gadus morhua", prey_group),
+         prey_group = ifelse(prey_group == "saduria_entomon_tot", "Saduria entomon", prey_group),
+         prey_group = ifelse(prey_group == "gobiidae_tot", "Gobiidae", prey_group),
+         prey_group = ifelse(prey_group == "other_crustacea_tot", "Other crustacea", prey_group),
+         prey_group = ifelse(prey_group == "polychaeta_tot", "Polychaeta", prey_group),
+         prey_group = ifelse(prey_group == "platichthys_flesus_tot", "Platichthys flesus", prey_group),
+         prey_group = ifelse(prey_group == "sprattus_sprattus_tot", "Sprattus sprattus", prey_group),
+         prey_group = ifelse(prey_group == "other_pisces_tot", "Other pisces", prey_group),
+         prey_group = ifelse(prey_group == "clupeidae_tot", "Clupeidae", prey_group),
+         prey_group = ifelse(prey_group == "clupea_harengus_tot", "Clupea harengus", prey_group),
+         prey_group = ifelse(prey_group == "other_tot", "Other", prey_group),
+         prey_group = ifelse(prey_group == "amphipoda_tot", "Amphipoda", prey_group),
+         prey_group = ifelse(prey_group == "non_bio_tot", "Non-bio", prey_group)) %>% 
+  ggplot(aes(x = "" , y = percent_by_group, fill = fct_inorder(prey_group))) +
+  facet_wrap(~pred_new) +
+  labs(x = "", y = "") +
+  geom_col(width = 1, color = NA, alpha = 0.8) +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = pal) +  
+  guides(fill = guide_legend(title.position = "top", title = "Prey group")) +
+  theme_plot() + 
+  theme(legend.position = "bottom",
+        axis.text = element_blank(),
+        legend.text = element_text(size = 8),
+        axis.ticks = element_blank(),
+        panel.grid  = element_blank())
+
+ggsave("figures/supp/total_pie.pdf", width = 17, height = 17, units = "cm")
+```
+
+```{r ontogenetic diet plot}
+# Prop from prey by size class, years and quarters pooled
+
+long_cod %>% filter(pred_length_cm < 6) %>% arrange(desc(pred_length_cm)) %>% as.data.frame()
+
+max_size_cod <- 65
+
+cod_important_prey3 <- long_cod %>%
+  mutate(pred_length_cm2 = ifelse(pred_length_cm > max_size_cod, max_size_cod -1, pred_length_cm)) %>% 
+  mutate(predator_length_grp = cut(pred_length_cm2, breaks = seq(0, 100, by = 5))) %>% 
+  group_by(prey_group, predator_length_grp) %>%
+  summarise(prey_group_tot = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(predator_length_grp) %>% 
+  mutate(prop = prey_group_tot / sum(prey_group_tot)) %>% 
+  ungroup() %>%
+  mutate(max_size = as.numeric(substr(predator_length_grp, 5, 6)),
+         max_size = ifelse(predator_length_grp == "(0,5]", 5, max_size),
+         max_size = ifelse(predator_length_grp == "(5,10]", 10, max_size),
+         predator = "Cod")
+
+max_size_fle = 40
+
+fle_important_prey3 <- long_fle %>%
+  mutate(pred_length_cm2 = ifelse(pred_length_cm > max_size_fle, max_size_fle-1, pred_length_cm)) %>% 
+  mutate(predator_length_grp = cut(pred_length_cm2, breaks = seq(0, 100, by = 5))) %>% 
+  group_by(prey_group, predator_length_grp) %>%
+  summarise(prey_group_tot = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(predator_length_grp) %>% 
+  mutate(prop = prey_group_tot / sum(prey_group_tot)) %>% 
+  ungroup() %>%
+  mutate(max_size = as.numeric(substr(predator_length_grp, 5, 6)),
+         max_size = ifelse(predator_length_grp == "(0,5]", 5, max_size),
+         max_size = ifelse(predator_length_grp == "(5,10]", 10, max_size),
+         predator = "Flounder")
+
+area_plot <- bind_rows(fle_important_prey3, cod_important_prey3) %>% 
+  mutate(prop = replace_na(prop, 0))
+
+n_cat <- nrow(area_plot %>% distinct(prey_group))
+colourCount <- n_cat
+getPalette <- colorRampPalette(brewer.pal(12, "Paired"))
+pal <- getPalette(colourCount)
+
+area_plot %>% distinct(prey_group)
+
+area_plot <- area_plot %>%
+  mutate(prey_group = ifelse(prey_group == "amphipoda_tot", "Amphipoda", prey_group),
+         prey_group = ifelse(prey_group == "bivalvia_tot", "Bivalvia", prey_group),
+         prey_group = ifelse(prey_group == "clupea_harengus_tot", "Clupea harengus", prey_group),
+         prey_group = ifelse(prey_group == "clupeidae_tot", "Clupeidae", prey_group),
+         prey_group = ifelse(prey_group == "gadus_morhua_tot", "Gadus morhua", prey_group),
+         prey_group = ifelse(prey_group == "gobiidae_tot", "Gobiidae", prey_group),
+         prey_group = ifelse(prey_group == "mysidae_tot", "Mysidae", prey_group),
+         prey_group = ifelse(prey_group == "non_bio_tot", "Non-bio", prey_group),
+         prey_group = ifelse(prey_group == "other_crustacea_tot", "Other crustacea", prey_group),
+         prey_group = ifelse(prey_group == "other_pisces_tot", "Other pisces", prey_group),
+         prey_group = ifelse(prey_group == "other_tot", "Other", prey_group),
+         prey_group = ifelse(prey_group == "platichthys_flesus_tot", "Platichthys flesus", prey_group),
+         prey_group = ifelse(prey_group == "polychaeta_tot", "Polychaeta", prey_group),
+         prey_group = ifelse(prey_group == "saduria_entomon_tot", "Saduria entomon", prey_group),
+         prey_group = ifelse(prey_group == "sprattus_sprattus_tot", "Sprattus sprattus", prey_group))
+
+# fill_order <- factor(area_plot$prey_group,
+#                      levels =  c("Sprattus sprattus", "Clupea harengus", "Clupeidae",
+#                                  "Gobiidae", "Other pisces", "Gadiformes", "Gadus morhua",
+#                                  "Platichthys flesus", "Amphipoda", "Bivalvia", "Mysidae",
+#                                  "Polychaeta", "Saduria entomon", "Other crustacea",
+#                                  "Other", "Non-bio"))
+
+# Dataframes for geom_text with sample size
+n_cod <- long_cod %>%
+  mutate(pred_length_cm2 = ifelse(pred_length_cm > max_size_cod, max_size_cod -1, pred_length_cm)) %>% 
+  mutate(predator_length_grp = cut(pred_length_cm2, breaks = seq(0, 100, by = 5))) %>% 
+  group_by(predator_length_grp) %>%
+  summarise(n = length(unique(pred_id)))
+
+n_fle <- long_fle %>%
+  mutate(pred_length_cm2 = ifelse(pred_length_cm > max_size_fle, max_size_fle-1, pred_length_cm)) %>% 
+  mutate(predator_length_grp = cut(pred_length_cm2, breaks = seq(0, 100, by = 5))) %>% 
+  group_by(predator_length_grp) %>%
+  summarise(n = length(unique(pred_id)))
+
+n_dat <- bind_rows(n_cod %>% mutate(predator = "Cod"), 
+                   n_fle %>% mutate(predator = "Flounder")) %>% 
+  mutate(max_size = as.numeric(substr(predator_length_grp, 5, 6)),
+         max_size = ifelse(predator_length_grp == "(0,5]", 5, max_size),
+         max_size = ifelse(predator_length_grp == "(5,10]", 10, max_size))
+
+
+#ggplot(data = area_plot, aes(x = min_size, y = prop, fill = fill_order, color = fill_order)) +
+ggplot(data = area_plot, aes(x = max_size, y = prop, fill = prey_group, color = prey_group)) +
+  geom_col(width = 4.3) +
+  geom_text(data = n_dat, aes(x = max_size, y = 1.038, label = n), inherit.aes = FALSE,
+            size = 0, color = "white") +
+  geom_text(data = n_dat, aes(x = max_size, y = 1.02, label = n), inherit.aes = FALSE,
+            size = 2) +
+  facet_wrap(~predator, scales = "free") +
+  scale_fill_manual(values = pal, name = "") +
+  scale_color_manual(values = pal, name = "") +
+  coord_cartesian(expand = 0) +
+  scale_x_continuous(breaks = seq(0, 100, 5)) +
+  labs(y = "Proportion", x = "Max. predator size in group [cm]") +
+  theme(legend.position = "bottom",
+        aspect.ratio = 1) +
+  NULL
+
+ggsave("figures/ontogenetic_diet.pdf", width = 17, height = 17, units = "cm")
+```
+
+## Calculate response variables
+
+```{r calculate summaries and response variables}
+# Total feeding ratio, proportion of saduria and proportion of common prey!
+
+# Cod
+wide_cod <- d_wide_cod %>% 
+  drop_na(pred_weight_g) %>% 
+  mutate(tot_prey_biom = amphipoda_tot + bivalvia_tot + clupeidae_tot + clupea_harengus_tot + 
+             gadus_morhua_tot + gobiidae_tot + mysidae_tot + non_bio_tot + 
+             other_crustacea_tot + other_tot + other_pisces_tot + platichthys_flesus_tot +
+             polychaeta_tot + saduria_entomon_tot + sprattus_sprattus_tot,
+         
+         tot_benthic_prey_biom = amphipoda_tot + bivalvia_tot + gadus_morhua_tot +
+             gobiidae_tot + mysidae_tot + non_bio_tot + 
+             other_crustacea_tot + other_tot + other_pisces_tot + platichthys_flesus_tot +
+             polychaeta_tot + saduria_entomon_tot,
+         
+         tot_sprat_biom = sprattus_sprattus_tot,
+         
+         tot_herring_biom = clupea_harengus_tot,
+         
+         tot_pelagic_biom = clupeidae_tot + clupea_harengus_tot + sprattus_sprattus_tot,
+         
+         tot_common_prey_biom = other_crustacea_tot + other_pisces_tot + polychaeta_tot + 
+             saduria_entomon_tot + sprattus_sprattus_tot,
+         
+         tot_feeding_ratio = (tot_prey_biom)/(pred_weight_g - tot_prey_biom),
+         
+         benthic_feeding_ratio = (tot_benthic_prey_biom)/(pred_weight_g - tot_prey_biom),
+         
+         sprat_feeding_ratio = tot_sprat_biom/(pred_weight_g - tot_pelagic_biom),
+         
+         herring_feeding_ratio = tot_herring_biom/(pred_weight_g - tot_pelagic_biom),
+         
+         pelagic_feeding_ratio = tot_pelagic_biom/(pred_weight_g - tot_pelagic_biom),
+         
+         common_feeding_ratio = (tot_common_prey_biom)/(pred_weight_g - tot_prey_biom),
+         
+         saduria_feeding_ratio = (saduria_entomon_tot)/(pred_weight_g - tot_prey_biom)) %>% 
+  filter(tot_feeding_ratio < 0.4) %>% # Seems like a reasonable cutoff
+  dplyr::select(-amphipoda_tot, -bivalvia_tot, -clupeidae_tot, -clupea_harengus_tot, 
+                -gadus_morhua_tot, -gobiidae_tot, -mysidae_tot, -non_bio_tot, 
+                -other_crustacea_tot, -other_tot, -other_pisces_tot, -platichthys_flesus_tot,
+                -polychaeta_tot, -saduria_entomon_tot, -sprattus_sprattus_tot,
+                -tot_prey_biom, -tot_benthic_prey_biom, -tot_common_prey_biom, 
+                -tot_pelagic_biom, -tot_sprat_biom, -tot_herring_biom)
+
+# Flounder  
+wide_fle <- d_wide_fle %>% 
+  drop_na(pred_weight_g) %>% 
+  mutate(tot_prey_biom = amphipoda_tot + bivalvia_tot + clupeidae_tot + clupea_harengus_tot + 
+             gadus_morhua_tot + gobiidae_tot + mysidae_tot + non_bio_tot + 
+             other_crustacea_tot + other_tot + other_pisces_tot + platichthys_flesus_tot +
+             polychaeta_tot + saduria_entomon_tot + sprattus_sprattus_tot,
+         
+         tot_benthic_prey_biom = amphipoda_tot + bivalvia_tot + gadus_morhua_tot +
+             gobiidae_tot + mysidae_tot + non_bio_tot + 
+             other_crustacea_tot + other_tot + other_pisces_tot + platichthys_flesus_tot +
+             polychaeta_tot + saduria_entomon_tot,
+         
+         tot_sprat_biom = sprattus_sprattus_tot,
+         
+         tot_herring_biom = clupea_harengus_tot,
+         
+         tot_pelagic_biom = clupeidae_tot + clupea_harengus_tot + sprattus_sprattus_tot,
+         
+         tot_common_prey_biom = other_crustacea_tot + other_pisces_tot + polychaeta_tot + 
+             saduria_entomon_tot + sprattus_sprattus_tot,
+         
+         tot_feeding_ratio = (tot_prey_biom)/(pred_weight_g - tot_prey_biom),
+         
+         benthic_feeding_ratio = (tot_benthic_prey_biom)/(pred_weight_g - tot_prey_biom),
+         
+         sprat_feeding_ratio = tot_sprat_biom/(pred_weight_g - tot_pelagic_biom),
+         
+         herring_feeding_ratio = tot_herring_biom/(pred_weight_g - tot_pelagic_biom),
+         
+         pelagic_feeding_ratio = tot_pelagic_biom/(pred_weight_g - tot_pelagic_biom),
+         
+         common_feeding_ratio = (tot_common_prey_biom)/(pred_weight_g - tot_prey_biom),
+         
+         saduria_feeding_ratio = (saduria_entomon_tot)/(pred_weight_g - tot_prey_biom)) %>% 
+  filter(tot_feeding_ratio < 0.4) %>% # Seems like a reasonable cutoff
+  dplyr::select(-amphipoda_tot, -bivalvia_tot, -clupeidae_tot, -clupea_harengus_tot, 
+                -gadus_morhua_tot, -gobiidae_tot, -mysidae_tot, -non_bio_tot, 
+                -other_crustacea_tot, -other_tot, -other_pisces_tot, -platichthys_flesus_tot,
+                -polychaeta_tot, -saduria_entomon_tot, -sprattus_sprattus_tot,
+                -tot_prey_biom, -tot_benthic_prey_biom, -tot_common_prey_biom,
+                -tot_pelagic_biom, -tot_sprat_biom, -tot_herring_biom)
+
+# Plot tot_feeding_ratio for all years
+ggplot(wide_cod, aes(year, tot_feeding_ratio)) + 
+  geom_jitter(size = 3, shape = 21, color = "white", fill = "gray30") + 
+  stat_smooth(method = "gam", formula = y~s(x, k = 3)) + 
+  facet_wrap(~quarter, ncol = 1, scales = "free") + 
+  NULL
+
+ggplot(wide_fle, aes(year, tot_feeding_ratio)) + 
+  geom_jitter(size = 3, shape = 21, color = "white", fill = "gray30") + 
+  stat_smooth(method = "gam", formula = y~s(x, k = 3)) + 
+  facet_wrap(~quarter, ncol = 1, scales = "free") + 
+  NULL
+
+dat <- bind_rows(wide_fle, wide_cod)
+
+glimpse(dat)
+nrow(dat)
+length(unique(dat$pred_id))
+```
+
+```{r save clean diet data}
+write_csv(dat, "data/clean/clean_stomach_data.csv")
+```

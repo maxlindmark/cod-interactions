@@ -1,0 +1,171 @@
+---
+title: "Evaluate diet and spatial overlap"
+author: "Max Lindmark"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+  df_print: paged
+pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, cache=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 12,
+  fig.asp = 0.618,
+  fig.align ='center'
+)
+```
+
+# Intro
+In this script, I take the collated stomach data set and calculate aggregates (feeding ratio, total weight of prey groups) and predictor variables for diet data, aggregate to get 1 stomach = 1 row per prey type (not prey individual). I also select only the columns I need for model fitting, join environmental covariates and cpue covariates for cod and flounder, and lastly saduria biomass densities.
+
+## Load packages & source functions
+
+```{r load libraries, message=FALSE, warning=TRUE}
+# Load libraries, install if needed
+library(tidyverse)
+library(readxl)
+library(tidylog)
+library(RCurl)
+library(RColorBrewer)
+library(patchwork)
+library(viridis)
+library(sdmTMB)
+library(mapplots)
+library(sp)
+library(raster)
+library(ggeffects)
+library(modelr)
+
+# Source code for lan_lot to UTM
+source("/Users/maxlindmark/Dropbox/Max work/R/cod_interactions/R/functions/lon_lat_utm.R")
+
+# Source code for map plots
+source("/Users/maxlindmark/Dropbox/Max work/R/cod_interactions/R/functions/map_plot.R")
+
+# Trim the map plot to better fit stomach data
+xmin2 <- 303000
+xmax2 <- 916000
+xrange <- xmax2 - xmin2
+
+ymin2 <- 5980000
+ymax2 <- 6580000
+yrange <- ymax2 - ymin2
+
+theme_set(theme_plot())
+
+plot_map_fc2 <- plot_map_fc +
+  theme(legend.position = "bottom") +
+  xlim(xmin2*1.5, xmax2*0.9) +
+  ylim(ymin2*1.025, ymax2*0.98268)
+
+# Continuous colors
+options(ggplot2.continuous.colour = "viridis")
+```
+
+## Read stomach data
+
+```{r read data, warning=FALSE}
+stom <- read_csv("data/clean/clean_stomach_data_all_prey.csv") %>% as.data.frame()
+
+wide_cod <- stom %>% 
+  filter(species == "Cod") %>%
+  filter(pred_length_cm < 25) %>% 
+  group_by(year, quarter, ices_rect, prey_group) %>%
+  summarise(tot_prey_weight = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(year, quarter, ices_rect) %>%
+  mutate(cod_prey_prop = tot_prey_weight / sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  mutate(id = paste(year, quarter, ices_rect, prey_group, sep = "_"))
+
+wide_fle <- stom %>% 
+  filter(species == "Flounder") %>% 
+  group_by(year, quarter, ices_rect, prey_group) %>%
+  summarise(tot_prey_weight = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(year, quarter, ices_rect) %>%
+  mutate(fle_prey_prop = tot_prey_weight / sum(tot_prey_weight)) %>%
+  ungroup() %>% 
+  mutate(id = paste(year, quarter, ices_rect, prey_group, sep = "_")) %>% 
+  dplyr::select(id, fle_prey_prop)
+  
+wide <- left_join(wide_cod, wide_fle, by = "id") %>% as.data.frame()
+
+hist(wide_cod$cod_prey_prop)
+hist(wide_fle$fle_prey_prop)
+
+# Calculate Schoener index
+schoener <- wide %>% 
+  group_by(year, quarter, ices_rect) %>%
+  summarise(schoener = 1 - 0.5*(sum(abs(fle_prey_prop - cod_prey_prop)))) %>% 
+  ungroup() %>% 
+  drop_na(schoener) %>% 
+  mutate(id = paste(year, quarter, ices_rect, sep = "_"))
+
+schoener
+
+ggplot(schoener, aes(year, schoener, color = ices_rect)) + 
+  geom_point() + 
+  facet_wrap(~quarter, ncol = 2)
+
+# Add back in information from the stomach data
+stom_sum <- stom %>% 
+  group_by(year, quarter, ices_rect) %>% 
+  summarise(median_cod_density = median(lcod_kg_km2 + scod_kg_km2),
+            median_fle_density = median(fle_kg_km2), 
+            median_density = median(lcod_kg_km2 + scod_kg_km2 + fle_kg_km2)) %>% 
+  ungroup() %>% 
+  mutate(id = paste(year, quarter, ices_rect, sep = "_")) %>% 
+  dplyr::select(id, median_cod_density, median_fle_density, median_density)
+
+schoener <- left_join(schoener, stom_sum, by = "id")
+
+# Add in X and Y
+schoener <- schoener %>% 
+  mutate(lat = ices.rect(ices_rect)$lat,
+         lon = ices.rect(ices_rect)$lon,
+         X = LongLatToUTM(lon, lat, zone = 33)$X / 1000,
+         Y = LongLatToUTM(lon, lat, zone = 33)$Y / 1000)
+```
+
+## Plot!
+
+```{r}
+# Map-plot
+plot_map_fc2 + 
+  geom_point(data = schoener, aes(X*1000, Y*1000, color = schoener), size = 5) + 
+  facet_grid(quarter ~ year) + 
+  scale_color_viridis(trans = "sqrt")
+
+# Against cod density...
+ggplot(data = schoener, aes(log(median_cod_density), schoener)) + 
+  geom_point() + 
+  stat_smooth(method = "gam", formula = y~s(x, k = 5)) +
+  coord_cartesian(ylim = c(0, 1))
+
+# Against flounder density...
+ggplot(data = schoener, aes(log(median_fle_density), schoener)) + 
+  geom_point() +
+  stat_smooth(method = "gam", formula = y~s(x, k = 5)) +
+  coord_cartesian(ylim = c(0, 1))
+
+# Against total density...
+ggplot(data = schoener, aes(log(median_density), schoener)) + 
+  geom_point() +
+  stat_smooth(method = "gam", formula = y~s(x, k = 5)) +
+  coord_cartesian(ylim = c(0, 1))
+```
+
+### How can we disentangle this from the effect of the prey community? What is the appropriate aggregation level?
+
+
+
+
+
+
+
