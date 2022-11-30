@@ -28,18 +28,21 @@ vignettes/*.pdf
 /R/guides/
 
 # Large data files and data we cannot share yet
-/data/depth_geo_tif/
-/data/ICES_StatRec_mapto_ICES_Areas/
-/data/saduria_tif
-/data/
+data/
 
 # Large model output files
-/output/
 output/
 
+# Extra figures
+figures/supp/cpue_oxygen_rasters/
+figures/supp/cpue_sal_rasters7
+figures/supp/cpue_temp_rasters/
+figures/supp/stomach_oxygen_rasters/
+figures/supp/stomach_temp_rasters/
+
 # html files
-/R/analysis/cod_flounder_diets.html
-/R/analysis/density_spatial_trend_models.html
+R/analysis/cod_flounder_diets.html
+R/analysis/density_spatial_trend_models.html
 
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
