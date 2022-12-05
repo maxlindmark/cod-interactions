@@ -155,10 +155,11 @@ ggplot(data = schoener, aes(log(median_fle_density), schoener)) +
   coord_cartesian(ylim = c(0, 1))
 
 # Against total density...
-ggplot(data = schoener, aes(log(median_density), schoener)) + 
+ggplot(data = schoener, aes(log(median_fle_density), log(median_cod_density),
+                            size = schoener, color = schoener)) + 
   geom_point() +
-  stat_smooth(method = "gam", formula = y~s(x, k = 5)) +
-  coord_cartesian(ylim = c(0, 1))
+  geom_vline(xintercept = mean(log(schoener$median_fle_density))) +
+  geom_hline(yintercept = mean(log(schoener$median_cod_density)))
 ```
 
 ### How can we disentangle this from the effect of the prey community? What is the appropriate aggregation level?

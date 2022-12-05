@@ -55,6 +55,7 @@ library(sp)
 library(raster)
 library(ggcorrplot)
 library(ggh4x)
+library(visreg)
 options(mc.cores = parallel::detectCores()) 
 
 # Source code for map plots
@@ -132,9 +133,24 @@ cpue2 <- cpue2 %>%
          temp_sc = (temp - mean(temp)) / sd(temp),
          oxy_sc = (oxy - mean(oxy)) / sd(oxy),
          sal_sc = (sal - mean(sal)) / sd(sal),
+         flounder_sc = (flounder - mean(flounder) / sd(flounder)),
+         large_cod_sc = (large_cod - mean(large_cod) / sd(large_cod)),
+         small_cod_sc = (small_cod - mean(small_cod) / sd(small_cod)),
          fyear = as.factor(year),
          fsubstrate = as.factor(substrate))
 ```         
+
+```{r}
+# colnames(cpue2)
+# 
+# ggplot(cpue2, aes(flounder, large_cod)) +
+#   geom_point()
+#   
+# ggplot(cpue2, aes(flounder, small_cod)) +
+#   geom_point()
+# 
+# write.csv(cpue2, "output/mich_catch_by_length_q1_q4.csv")
+```
 
 ## Read and scale the prediction grid
 
@@ -232,6 +248,13 @@ pred_grid_q4 <- pred_grid %>% filter(quarter == 4)
 ## Create meshes
 
 ```{r}
+# Both Q's
+spde <- make_mesh(cpue2,
+                  xy_cols = c("X", "Y"),
+                  n_knots = 150,
+                  type = "kmeans",
+                  seed = 42)
+
 # Q1
 spde_q1 <- make_mesh(filter(cpue2, quarter == 1),
                      xy_cols = c("X", "Y"),
@@ -239,7 +262,7 @@ spde_q1 <- make_mesh(filter(cpue2, quarter == 1),
                      type = "kmeans",
                      seed = 42)
 
-# All flounder Q4
+# Q4
 spde_q4 <- make_mesh(filter(cpue2, quarter == 4),
                      xy_cols = c("X", "Y"),
                      n_knots = 150, 
@@ -352,6 +375,107 @@ mfle_q4_space <- sdmTMB(flounder ~ 0 + fsubstrate + fyear + depth_sc + depth_sq_
 
 sanity(mfle_q4_space)
 tidy(mfle_q4_space, conf.int = TRUE)
+```
+
+## Models with the other species as coeffcients
+We can't put them in the main model because we want to use that for spatial overlap. There isn't as much need to fit the models below by quarter (though we could), because while the distribution changes, we don't know a priori that the effect should.
+
+```{r small cod model, cache=TRUE}
+# Small cod model
+mcod_s <- sdmTMB(small_cod ~ 0 + fsubstrate + fyear + depth_sc + depth_sq_sc +
+                         temp_sc + temp_sq_sc + oxy_sc + sal_sc + flounder_sc,
+                       data = cpue2,
+                       mesh = spde,
+                       family = tweedie(link = "log"),
+                       spatiotemporal = "IID",
+                       spatial = "on",
+                       time = "year",
+                       reml = FALSE,
+                       control = sdmTMBcontrol(newton_loops = 1))
+
+sanity(mcod_s)
+tidy(mcod_s, conf.int = TRUE)
+```
+
+```{r large cod model, cache=TRUE}
+# Large cod model q4 spatial
+mcod_l <- sdmTMB(large_cod ~ 0 + fsubstrate + fyear + depth_sc + depth_sq_sc +
+                   temp_sc + temp_sq_sc + oxy_sc + sal_sc + flounder_sc,
+                 data = cpue2,
+                 mesh = spde,
+                 family = tweedie(link = "log"),
+                 spatiotemporal = "IID",
+                 spatial = "on",
+                 time = "year",
+                 reml = FALSE,
+                 control = sdmTMBcontrol(newton_loops = 1))
+
+sanity(mcod_l)
+tidy(mcod_l, conf.int = TRUE)
+```
+
+```{r flounder model, cache=TRUE}
+# Flounder model q4 spatial
+mfle <- sdmTMB(flounder ~ 0 + fsubstrate + fyear + depth_sc + depth_sq_sc +
+                 temp_sc + temp_sq_sc + oxy_sc + sal_sc + large_cod_sc + small_cod_sc,
+               data = cpue2,
+               mesh = spde,
+               family = tweedie(link = "log"),
+               spatiotemporal = "IID",
+               spatial = "on",
+               time = "year",
+               reml = FALSE,
+               control = sdmTMBcontrol(newton_loops = 1))
+
+sanity(mfle)
+tidy(mfle, conf.int = TRUE)
+```
+
+## Plot conditional density effects
+
+```{r, cache=TRUE}
+mfle_d <- visreg(mfle, xvar = "small_cod_sc", plot = FALSE)
+mfle_d2 <- visreg(mfle, xvar = "large_cod_sc", plot = FALSE)
+
+mscod_d <- visreg(mcod_s, xvar = "flounder_sc", plot = FALSE)
+mlcod_d <- visreg(mcod_l, xvar = "flounder_sc", plot = FALSE)
+```
+
+```{r}
+pal <- brewer.pal(n = 3, name = "Set1")[2]
+
+p1 <- ggplot(mfle_d$fit, aes(x = small_cod_sc, y = visregFit)) +
+  geom_point(aes(y = visregRes), data = mfle_d$res, size = 1, alpha = 0.2, color = "grey30") +
+  geom_ribbon(aes(ymin = visregLwr, ymax = visregUpr), alpha = 0.2) +
+  geom_line(color = pal, size = 1.2) +
+  labs(x = "Small cod density",
+       y = "Flounder visregFit")
+
+p2 <- ggplot(mfle_d2$fit, aes(x = large_cod_sc, y = visregFit)) +
+  geom_point(aes(y = visregRes), data = mfle_d2$res, size = 1, alpha = 0.2, color = "grey30") +
+  geom_ribbon(aes(ymin = visregLwr, ymax = visregUpr), alpha = 0.2) +
+  geom_line(color = pal, size = 1.2) +
+  labs(x = "Large cod density",
+       y = "Flounder visregFit")
+
+p3 <- ggplot(mscod_d$fit, aes(x = flounder_sc, y = visregFit)) +
+  geom_point(aes(y = visregRes), data = mscod_d$res, size = 1, alpha = 0.2, color = "grey30") +
+  geom_ribbon(aes(ymin = visregLwr, ymax = visregUpr), alpha = 0.2) +
+  geom_line(color = pal, size = 1.2) +
+  labs(x = "Flounder density",
+       y = "Small cod visregFit")
+
+
+p4 <- ggplot(mlcod_d$fit, aes(x = flounder_sc, y = visregFit)) +
+  geom_point(aes(y = visregRes), data = mlcod_d$res, size = 1, alpha = 0.2, color = "grey30") +
+  geom_ribbon(aes(ymin = visregLwr, ymax = visregUpr), alpha = 0.2) +
+  geom_line(color = pal, size = 1.2) +
+  labs(x = "Flounder density",
+       y = "Large cod visregFit")
+
+p1 + p2 + p3 + p4 & theme(aspect.ratio = 1)
+
+ggsave("figures/density_coefs_smooth.pdf", width = 20, height = 20, units = "cm")
 ```
 
 ## Plot coefficients
@@ -557,39 +681,46 @@ all_pred2 <- all_pred %>%
   filter(year %in% c(1995, 2015)) %>% 
   dplyr::select(X, Y, scod_fle_ovr, lcod_fle_ovr, quarter, year) %>% 
   pivot_longer(c(scod_fle_ovr, lcod_fle_ovr)) %>% 
-  rename(overlap = name)
+  rename(overlap = name) %>% 
+  mutate(overlap = ifelse(overlap == "scod_fle_ovr", "Small cod : Flounder", overlap),
+         overlap = ifelse(overlap == "lcod_fle_ovr", "Large cod : Flounder", overlap))
 
+# Since it's mainly an difference in elevation between quarters, I just do it for Q1 here
 p1 <- plot_map_fc +
-  geom_raster(data = filter(all_pred2, overlap == "scod_fle_ovr"),
+  geom_raster(data = filter(all_pred2, quarter == 1),
               aes(x = X*1000, y = Y*1000, fill = value)) +
   scale_fill_viridis_c(trans = "sqrt", name = "Overlap") +
-  facet_grid(year ~ quarter) +
-  theme(legend.text = element_text(angle = 90)) + 
-  ggtitle("Small cod : Flonder") +
+  facet_grid(year ~ overlap) +
+  theme(legend.text = element_text(angle = 90),
+        legend.position = "bottom",
+        legend.key.height = unit(0.25, 'cm'),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        plot.title = element_text(size = 10)) + 
+  ggtitle("Quarter 1") +
   NULL
 
 p2 <- plot_map_fc +
-  geom_raster(data = filter(all_pred2, overlap == "lcod_fle_ovr"),
+  geom_raster(data = filter(all_pred2, quarter == 4),
               aes(x = X*1000, y = Y*1000, fill = value)) +
   scale_fill_viridis_c(trans = "sqrt", name = "Overlap") +
-  facet_grid(year ~ quarter) +
-  theme(legend.text = element_text(angle = 90)) + 
-  ggtitle("Large cod : Flonder") +
+  facet_grid(year ~ overlap) +
+  theme(legend.text = element_text(angle = 90),
+        legend.position = "bottom",
+        legend.key.height = unit(0.25, 'cm'),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        plot.title = element_text(size = 10)) +
+  ggtitle("Quarter 4") +
   NULL
 
-p1 + p2
-
-ggsave("figures/spatial_overlap.pdf", width = 22, height = 14, units = "cm")
-
-# Over time
+# Over space
 p5 <- all_pred %>% 
   distinct(year, quarter, .keep_all = TRUE) %>% 
   ggplot(aes(year, lcod_fle_ovr_tot, color = factor(quarter), fill = factor(quarter))) + 
   labs(color = "Quarter", x = "Year", y = "Overlap index") + 
   guides(fill = "none") +
   stat_smooth(method = "gam", formula = y~s(x, k = 3)) +
-  ggtitle("Large cod : Flounder") +
-  geom_point()
+  geom_point() + 
+  theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
 
 p6 <- all_pred %>% 
   distinct(year, quarter, .keep_all = TRUE) %>% 
@@ -597,11 +728,12 @@ p6 <- all_pred %>%
   labs(color = "Quarter", x = "Year", y = "Overlap index") + 
   guides(fill = "none") +
   stat_smooth(method = "gam", formula = y~s(x, k = 3)) +
-  ggtitle("Small cod : Flounder") +
-  geom_point()
+  geom_point() +
+  theme(plot.margin = unit(c(0, 0, 0, 0), "cm"))
 
-(p5 | p6) + plot_annotation(tag_levels = "A") & theme(aspect.ratio = 1)
-ggsave("figures/spatial_overlap_time.pdf", width = 20, height = 20, units = "cm")
+((p1 | p2) / ((p5 | p6) + plot_layout(guides = "collect"))) + plot_layout(heights = c(1.1, 1)) + plot_annotation(tag_levels = "A") & theme(aspect.ratio = 1)
+
+ggsave("figures/spatial_overlap.pdf", width = 20, height = 20, units = "cm")
 ```
 
 ## Conditional effects
@@ -759,7 +891,7 @@ p2 <- ggplot(margins_temp,
 
 (p1 / p2) + plot_annotation(tag_levels = "A") + plot_layout(guides = "collect")
 
-ggsave("figures/supp/conditional_effects.pdf", width = 20, height = 20, units = "cm")
+# ggsave("figures/supp/conditional_effects.pdf", width = 20, height = 20, units = "cm#")
 
 # Scaled
 p3 <- margins_temp %>% 
@@ -792,7 +924,7 @@ p4 <- margins_depth %>%
 
 (p3 / p4) + plot_annotation(tag_levels = "A") + plot_layout(guides = "collect")
 
-ggsave("figures/conditional_effects.pdf", width = 20, height = 20, units = "cm")
+# ggsave("figures/conditional_effects.pdf", width = 20, height = 20, units = "cm")
 ```
 
 ## Weighted quantiles
@@ -833,7 +965,7 @@ ggplot(wm, aes(year, `Weighted median`, color = Species)) +
   scale_color_brewer(palette = "Paired", name = "Species", direction = -1) +
   scale_fill_brewer(palette = "Paired", name = "Species", direction = -1)
 
-ggsave("figures/weighted_quantiles.pdf", width = 20, height = 20, units = "cm")
+#ggsave("figures/weighted_quantiles.pdf", width = 20, height = 20, units = "cm")
 
 # Scaled
 wm %>% 
@@ -846,7 +978,7 @@ wm %>%
   scale_color_brewer(palette = "Paired", name = "Species", direction = -1) +
   scale_fill_brewer(palette = "Paired", name = "Species", direction = -1)
 
-ggsave("figures/supp/weighted_quantiles_scaled.pdf", width = 20, height = 20, units = "cm")
+#ggsave("figures/supp/weighted_quantiles_scaled.pdf", width = 20, height = 20, units = "cm")
 
 # ggplot(wm, aes(year, Median, color = Species, fill = Species)) +
 #   geom_ribbon(aes(ymin = `1st quartile`, ymax = `3rd quartile`), alpha = 0.4, color = NA) + 

@@ -78,7 +78,7 @@ scale_fill_discrete <- function(...) {
 ## Read and summarise data
 
 ```{r read data}
-cpue_full <- readr::read_csv("data/clean/full_cpue_length_q1_q4.csv") %>%
+cpue_full <- readr::read_csv("data/clean/catch_by_length_q1_q4.csv") %>%
   janitor::clean_names() %>% 
   rename(X = x,
          Y = y) 
@@ -481,9 +481,9 @@ res_long <- bind_rows(cpue2_q1_long, cpue2_q4_long) %>%
 plot_map_fc + 
   geom_point(data = filter(res_long, year == 1999), aes(X*1000, Y*1000, color = value), size = 2) + 
   facet_grid(quarter ~ species2) + 
-  scale_color_gradient2(name = "Spatial random effect")
+  scale_color_gradient2(name = "Residuals")
 
-ggsave("figures/residuals_in_space.pdf", width = 20, height = 20, units = "cm")
+ggsave("figures/supp/residuals_in_space.pdf", width = 20, height = 20, units = "cm")
 ```
 
 ## Residual correlations
@@ -572,7 +572,7 @@ p4 <- ggcorrplot(corr_q4, hc.order = TRUE, type = "full", lab = TRUE, lab_size =
 
 p1 + p4 + plot_layout(guides = "collect") & theme(legend.position = 'right')
 
-ggsave("figures/residu_corr.pdf", width = 20, height = 20, unit = "cm")
+ggsave("figures/supp/residu_corr.pdf", width = 20, height = 20, unit = "cm")
 ```
 
 Residuals by subdiv

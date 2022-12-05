@@ -81,6 +81,7 @@ small_cod_stomach <- read_csv("data/clean/small_cod_stomach.csv") %>%
          oxy_sc = (oxy - mean(oxy)) / sd(oxy),
          temp_sc = (temp - mean(temp)) / sd(temp),
          depth_sc = (depth - mean(depth)) / sd(depth),
+         density_saduria_sc = (density_saduria - mean(density_saduria)) / sd(density_saduria),
          density_cod_small_sc = (density_cod_small - mean(density_cod_small)) / sd(density_cod_small),
          density_cod_large_sc = (density_cod_large - mean(density_cod_large)) / sd(density_cod_large),
          density_flounder_sc = (density_flounder - mean(density_flounder)) / sd(density_flounder),
@@ -98,6 +99,7 @@ large_cod_stomach <- read_csv("data/clean/large_cod_stomach.csv") %>%
          oxy_sc = (oxy - mean(oxy)) / sd(oxy),
          temp_sc = (temp - mean(temp)) / sd(temp),
          depth_sc = (depth - mean(depth)) / sd(depth),
+         density_saduria_sc = (density_saduria - mean(density_saduria)) / sd(density_saduria),
          density_cod_small_sc = (density_cod_small - mean(density_cod_small)) / sd(density_cod_small),
          density_cod_large_sc = (density_cod_large - mean(density_cod_large)) / sd(density_cod_large),
          density_flounder_sc = (density_flounder - mean(density_flounder)) / sd(density_flounder),
@@ -115,6 +117,7 @@ flounder_stomach <- read_csv("data/clean/flounder_stomach.csv") %>%
          oxy_sc = (oxy - mean(oxy)) / sd(oxy),
          temp_sc = (temp - mean(temp)) / sd(temp),
          depth_sc = (depth - mean(depth)) / sd(depth),
+         density_saduria_sc = (density_saduria - mean(density_saduria)) / sd(density_saduria),
          density_cod_small_sc = (density_cod_small - mean(density_cod_small)) / sd(density_cod_small),
          density_cod_large_sc = (density_cod_large - mean(density_cod_large)) / sd(density_cod_large),
          density_flounder_sc = (density_flounder - mean(density_flounder)) / sd(density_flounder),
@@ -232,6 +235,13 @@ ggplot(full_dat, aes(density_cod_small_sc, feeding_ratio)) +
   geom_point() + 
   stat_smooth() + 
   facet_wrap(prey_group ~ species2, scales = "free")
+
+# Saduria
+ggplot(full_dat %>% filter(prey_group == "saduria_feeding_ratio"),
+       aes(density_saduria_sc, feeding_ratio)) + 
+  geom_point() + 
+  stat_smooth() + 
+  facet_wrap(~ species2, scales = "free", ncol = 2)
 ```
 
 ## Fit spatiotemporal model to feeding ratio
@@ -494,16 +504,25 @@ plot(flounder_spde)
 # Total
 s_cod_tot <- sdmTMB(
   data = small_cod_stomach,
-  formula = tot_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc + 
-    density_cod_large_sc + density_flounder_sc*oxy_sc + (1|haul_id),
-  family = tweedie(link = "log"),
+  formula = tot_feeding_ratio ~ 
+    0 +
+    fyear +
+    fquarter +
+    temp_sc +
+    depth_sc +
+    oxy_sc + 
+    density_cod_small_sc + 
+    density_cod_large_sc + 
+    density_flounder_sc +
+    (1|haul_id),
+  family = delta_lognormal(),
   time = "year",
   spatiotemporal = "off",
   spatial = "off",
   mesh = small_cod_spde,
   priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
+    b = normal(c(rep(NA, 7), rep(0, 6)),
+               c(rep(NA, 7), rep(1, 6)))),
   control = sdmTMBcontrol(newton_loops = 1)
   )
 
@@ -514,15 +533,15 @@ sanity(s_cod_tot)
 # Benthic
 s_cod_ben <- sdmTMB(
   data = small_cod_stomach,
-  formula = benthic_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc*oxy_sc + (1|haul_id),
-  family = tweedie(link = "log"),
+  formula = benthic_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + oxy_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc + (1|haul_id),
+  family = delta_lognormal(),
   time = "year",
   spatiotemporal = "off",
   spatial = "off",
   mesh = small_cod_spde,
   priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
+    b = normal(c(rep(NA, 7), rep(0, 6)),
+               c(rep(NA, 7), rep(1, 6)))),
   control = sdmTMBcontrol(newton_loops = 1)
   )
 
@@ -533,15 +552,15 @@ sanity(s_cod_ben)
 # Saduria
 s_cod_sad <- sdmTMB(
   data = small_cod_stomach,
-  formula = saduria_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc*oxy_sc + (1|haul_id),
-  family = tweedie(link = "log"),
+  formula = saduria_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + oxy_sc + depth_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc*density_saduria_sc + (1|haul_id),
+  family = delta_lognormal(),
   time = "year",
   spatiotemporal = "off",
   spatial = "off",
   mesh = small_cod_spde,
   priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
+    b = normal(c(rep(NA, 7), rep(0, 8)),
+               c(rep(NA, 7), rep(1, 8)))),
   control = sdmTMBcontrol(newton_loops = 1)
   )
 
@@ -550,21 +569,65 @@ tidy(s_cod_sad)
 sanity(s_cod_sad)
 ```
 
+```{r}
+# Test residuals for single model, tweedie vs lognormal
+# s_cod_tot2 <- sdmTMB(
+#   data = small_cod_stomach,
+#   formula = tot_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc + 
+#     density_cod_large_sc + density_flounder_sc*oxy_sc + (1|haul_id),
+#   family = tweedie(),
+#   time = "year",
+#   spatiotemporal = "off",
+#   spatial = "off",
+#   mesh = small_cod_spde,
+#   priors = sdmTMBpriors(
+#     b = normal(c(rep(NA, 7), rep(0, 7)),
+#                c(rep(NA, 7), rep(1, 7)))),
+#   control = sdmTMBcontrol(newton_loops = 1)
+#   )
+# 
+# # Delta-Lognormal
+# small_cod_stomach$res <- residuals(s_cod_tot)
+# 
+# p1 <- plot_map_fc2 +
+#   geom_point(data = small_cod_stomach, aes(X*1000, Y*1000, fill = res), size = 2, shape = 21, color = "grey50", stroke = 0.2) +
+#   scale_fill_gradient2() + 
+#   ggtitle("Delta-Lognormal")
+# 
+# mcmc_res <- residuals(s_cod_tot, type = "mle-mcmc", mcmc_iter = 201, mcmc_warmup = 200)
+# p1b <- ggplot(as.data.frame(mcmc_res), aes(sample = mcmc_res)) + stat_qq() + stat_qq_line() + theme(aspect.ratio = 1)
+# qqnorm(mcmc_res);qqline(mcmc_res)
+# 
+# # Tweedie
+# small_cod_stomach$res2 <- residuals(s_cod_tot2)
+# 
+# p2 <- plot_map_fc2 +
+#   geom_point(data = small_cod_stomach, aes(X*1000, Y*1000, fill = res2), size = 2, shape = 21, color = "grey50", stroke = 0.2) +
+#   scale_fill_gradient2() + 
+#   ggtitle("Tweedie")
+# 
+# mcmc_res2 <- residuals(s_cod_tot2, type = "mle-mcmc", mcmc_iter = 201, mcmc_warmup = 200) %>% as.data.frame()
+# p2b <- ggplot(mcmc_res2, aes(sample = V1)) + stat_qq() + stat_qq_line() + theme(aspect.ratio = 1)
+# 
+# # Plot!
+# (p1 + p2 + p1b + p2b) + plot_layout(heights = c(2, 1))
+```
+
 #### Large cod
 
 ```{r large cod, cache=TRUE}
 # Total
 l_cod_tot <- sdmTMB(
   data = large_cod_stomach,
-  formula = tot_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc*oxy_sc + (1|haul_id),
-  family = tweedie(link = "log"),
+  formula = tot_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + oxy_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc + (1|haul_id),
+  family = delta_lognormal(),
   time = "year",
   spatiotemporal = "off",
   spatial = "off",
   mesh = large_cod_spde,
   priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
+    b = normal(c(rep(NA, 7), rep(0, 6)),
+               c(rep(NA, 7), rep(1, 6)))),
   control = sdmTMBcontrol(newton_loops = 1)
   )
 
@@ -575,15 +638,15 @@ sanity(l_cod_tot)
 # Benthic
 l_cod_ben <- sdmTMB(
   data = large_cod_stomach,
-  formula = benthic_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc*oxy_sc + (1|haul_id),
-  family = tweedie(link = "log"),
+  formula = benthic_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + oxy_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc + (1|haul_id),
+  family = delta_lognormal(),
   time = "year",
   spatiotemporal = "off",
   spatial = "off",
   mesh = large_cod_spde,
   priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
+    b = normal(c(rep(NA, 7), rep(0, 6)),
+               c(rep(NA, 7), rep(1, 6)))),
   control = sdmTMBcontrol(newton_loops = 1)
   )
 
@@ -594,15 +657,15 @@ sanity(l_cod_ben)
 # Saduria
 l_cod_sad <- sdmTMB(
   data = large_cod_stomach,
-  formula = saduria_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc*oxy_sc + (1|haul_id),
-  family = tweedie(link = "log"),
+  formula = saduria_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + oxy_sc + depth_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc*density_saduria_sc + (1|haul_id),
+  family = delta_lognormal(),
   time = "year",
   spatiotemporal = "off",
   spatial = "off",
   mesh = large_cod_spde,
   priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
+    b = normal(c(rep(NA, 7), rep(0, 8)),
+               c(rep(NA, 7), rep(1, 8)))),
   control = sdmTMBcontrol(newton_loops = 1)
   )
 
@@ -617,15 +680,15 @@ sanity(l_cod_sad)
 # Total
 fle_tot <- sdmTMB(
   data = flounder_stomach,
-  formula = tot_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc*oxy_sc + density_cod_large_sc + density_flounder_sc + (1|haul_id),
-  family = tweedie(link = "log"),
+  formula = tot_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + oxy_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc + (1|haul_id),
+  family = delta_lognormal(),
   time = "year",
   spatiotemporal = "off",
   spatial = "off",
   mesh = flounder_spde,
   priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
+    b = normal(c(rep(NA, 7), rep(0, 6)),
+               c(rep(NA, 7), rep(1, 6)))),
   control = sdmTMBcontrol(newton_loops = 1)
   )
 
@@ -636,15 +699,15 @@ sanity(fle_tot)
 # Benthic
 fle_ben <- sdmTMB(
   data = flounder_stomach,
-  formula = benthic_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc*oxy_sc + density_cod_large_sc + density_flounder_sc + (1|haul_id),
-  family = tweedie(link = "log"),
+  formula = benthic_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + oxy_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc + (1|haul_id),
+  family = delta_lognormal(),
   time = "year",
   spatiotemporal = "off",
   spatial = "off",
   mesh = flounder_spde,
   priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
+    b = normal(c(rep(NA, 7), rep(0, 6)),
+               c(rep(NA, 7), rep(1, 6)))),
   control = sdmTMBcontrol(newton_loops = 1)
   )
 
@@ -655,15 +718,15 @@ sanity(fle_ben)
 # Saduria
 fle_sad <- sdmTMB(
   data = flounder_stomach,
-  formula = saduria_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc*oxy_sc + density_cod_large_sc + density_flounder_sc + (1|haul_id),
-  family = tweedie(link = "log"),
+  formula = saduria_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + oxy_sc + depth_sc + density_flounder_sc + density_cod_large_sc + density_cod_small_sc*density_saduria_sc + (1|haul_id),
+  family = delta_lognormal(),
   time = "year",
   spatiotemporal = "off",
   spatial = "off",
   mesh = flounder_spde,
   priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
+    b = normal(c(rep(NA, 7), rep(0, 8)),
+               c(rep(NA, 7), rep(1, 8)))),
   control = sdmTMBcontrol(newton_loops = 1)
   )
 
@@ -673,12 +736,12 @@ sanity(fle_sad)
 ```
 
 ```{r }
-# mcmc_res_l_cod_sad_v2 <- residuals(l_cod_sad_v2,
-#                                    type = "mle-mcmc",
-#                                    mcmc_iter = 201,
-#                                    mcmc_warmup = 200)
-# 
-# qqnorm(mcmc_res_l_cod_sad_v2, ylim = c(-5, 5), xlim = c(-5, 5)); qqline(mcmc_res_l_cod_sad_v2)
+mcmc_res_fle_sad <- residuals(fle_sad,
+                              type = "mle-mcmc",
+                              mcmc_iter = 201,
+                              mcmc_warmup = 200)
+
+qqnorm(mcmc_res_fle_sad); qqline(mcmc_res_fle_sad)
 ```
 
 ## Plot coefficients
@@ -686,61 +749,79 @@ sanity(fle_sad)
 ```{r coefs}
 #### Total prey
 # small cod total prey
-small_cod_tot_pars <- bind_rows(tidy(s_cod_tot, effects = "ran_pars", conf.int = TRUE),
-                                tidy(s_cod_tot, effects = "fixed", conf.int = TRUE)) %>%
+small_cod_tot_pars <- bind_rows(tidy(s_cod_tot, effects = "fixed", conf.int = TRUE, model = 1) %>% 
+                                  mutate(model = "Binomial"),
+                                tidy(s_cod_tot, effects = "fixed", conf.int = TRUE, model = 2) %>% 
+                                  mutate(model = "Lognormal")) %>%
   mutate(species = "Small cod",
-         response = "Total prey FR")
+         response = "Total prey")
 
 # large cod total prey
-large_cod_tot_pars <- bind_rows(tidy(l_cod_tot, effects = "ran_pars", conf.int = TRUE),
-                                tidy(l_cod_tot, effects = "fixed", conf.int = TRUE)) %>%
+large_cod_tot_pars <- bind_rows(tidy(l_cod_tot, effects = "fixed", conf.int = TRUE, model = 1) %>% 
+                                  mutate(model = "Binomial"),
+                                tidy(l_cod_tot, effects = "fixed", conf.int = TRUE, model = 2) %>% 
+                                  mutate(model = "Lognormal")) %>% 
   mutate(species = "Large cod",
-         response = "Total prey FR")
+         response = "Total prey")
 
 # flounder total prey
-flounder_tot_pars <- bind_rows(tidy(fle_tot, effects = "ran_pars", conf.int = TRUE),
-                               tidy(fle_tot, effects = "fixed", conf.int = TRUE)) %>%
+flounder_tot_pars <- bind_rows(tidy(fle_tot, effects = "fixed", conf.int = TRUE, model = 1) %>% 
+                                  mutate(model = "Binomial"),
+                                tidy(fle_tot, effects = "fixed", conf.int = TRUE, model = 2) %>% 
+                                  mutate(model = "Lognormal")) %>% 
   mutate(species = "Flounder",
-         response = "Total prey FR")
+         response = "Total prey")
 
 #### Benthic prey
 # small cod benthic prey
-small_cod_ben_pars <- bind_rows(tidy(s_cod_ben, effects = "ran_pars", conf.int = TRUE),
-                                tidy(s_cod_ben, effects = "fixed", conf.int = TRUE)) %>%
+small_cod_ben_pars <- bind_rows(tidy(s_cod_ben, effects = "fixed", conf.int = TRUE, model = 1) %>% 
+                                  mutate(model = "Binomial"),
+                                tidy(s_cod_ben, effects = "fixed", conf.int = TRUE, model = 2) %>% 
+                                  mutate(model = "Lognormal")) %>% 
   mutate(species = "Small cod",
-         response = "Benthic prey FR")
+         response = "Benthic prey")
 
 # large cod benthic prey
-large_cod_ben_pars <- bind_rows(tidy(l_cod_ben, effects = "ran_pars", conf.int = TRUE),
-                                tidy(l_cod_ben, effects = "fixed", conf.int = TRUE)) %>%
+large_cod_ben_pars <- bind_rows(tidy(l_cod_ben, effects = "fixed", conf.int = TRUE, model = 1) %>% 
+                                  mutate(model = "Binomial"),
+                                tidy(l_cod_ben, effects = "fixed", conf.int = TRUE, model = 2) %>% 
+                                  mutate(model = "Lognormal")) %>% 
   mutate(species = "Large cod",
-         response = "Benthic prey FR")
+         response = "Benthic prey")
 
 # flounder benthic prey
-flounder_ben_pars <- bind_rows(tidy(fle_ben, effects = "ran_pars", conf.int = TRUE),
-                               tidy(fle_ben, effects = "fixed", conf.int = TRUE)) %>%
+flounder_ben_pars <- bind_rows(tidy(fle_ben, effects = "fixed", conf.int = TRUE, model = 1) %>% 
+                                  mutate(model = "Binomial"),
+                                tidy(fle_ben, effects = "fixed", conf.int = TRUE, model = 2) %>% 
+                                  mutate(model = "Lognormal")) %>% 
   mutate(species = "Flounder",
-         response = "Benthic prey FR")
+         response = "Benthic prey")
 
 
 #### Saduria
 # small cod saduria
-small_cod_sad_pars <- bind_rows(tidy(s_cod_sad, effects = "ran_pars", conf.int = TRUE),
-                                tidy(s_cod_sad, effects = "fixed", conf.int = TRUE)) %>%
+small_cod_sad_pars <- bind_rows(tidy(s_cod_sad, effects = "fixed", conf.int = TRUE, model = 1) %>% 
+                                  mutate(model = "Binomial"),
+                                tidy(s_cod_sad, effects = "fixed", conf.int = TRUE, model = 2) %>% 
+                                  mutate(model = "Lognormal")) %>% 
   mutate(species = "Small cod",
-         response = "Saduria FR")
+         response = "Saduria")
 
 # large cod saduria
-large_cod_sad_pars <- bind_rows(tidy(l_cod_sad, effects = "ran_pars", conf.int = TRUE),
-                                tidy(l_cod_sad, effects = "fixed", conf.int = TRUE)) %>%
+large_cod_sad_pars <- bind_rows(tidy(l_cod_sad, effects = "fixed", conf.int = TRUE, model = 1) %>% 
+                                  mutate(model = "Binomial"),
+                                tidy(l_cod_sad, effects = "fixed", conf.int = TRUE, model = 2) %>% 
+                                  mutate(model = "Lognormal")) %>% 
   mutate(species = "Large cod",
-         response = "Saduria FR")
+         response = "Saduria")
 
 # flounder saduria
-flounder_sad_pars <- bind_rows(tidy(fle_sad, effects = "ran_pars", conf.int = TRUE),
-                               tidy(fle_sad, effects = "fixed", conf.int = TRUE)) %>%
+flounder_sad_pars <- bind_rows(tidy(fle_sad, effects = "fixed", conf.int = TRUE, model = 1) %>% 
+                                  mutate(model = "Binomial"),
+                                tidy(fle_sad, effects = "fixed", conf.int = TRUE, model = 2) %>% 
+                                  mutate(model = "Lognormal")) %>% 
   mutate(species = "Flounder",
-         response = "Saduria FR")
+         response = "Saduria")
 
 coefs <- bind_rows(small_cod_tot_pars,
                    large_cod_tot_pars,
@@ -759,33 +840,156 @@ coefs <- coefs %>%
          term2 = ifelse(term == "temp_sc", "Temperature", term2),
          term2 = ifelse(term == "oxy_sc", "Oxygen", term2),
          term2 = ifelse(term == "depth_sc", "Depth", term2),
-         term2 = ifelse(term == "density_cod_large_sc", "Cod density (> 29)", term2),
-         term2 = ifelse(term == "density_cod_small_sc", "Cod density (< 29)", term2),
-         term2 = ifelse(term == "density_cod_small_sc:oxy_sc", "Cod density (> 29) x Oxygen", term2),
-         term2 = ifelse(term == "density_flounder_sc:oxy_sc", "Flounder density x Oxygen", term2),
-         term2 = ifelse(term == "density_cod_small_sc:oxy_sc", "Small cod density x Oxygen", term2),
-         term2 = ifelse(term == "density_flounder_sc", "Flounder density", term2))
+         term2 = ifelse(term == "density_saduria_sc", "Saduria", term2),
+         term2 = ifelse(term == "density_cod_large_sc", "Cod (> 29)", term2),
+         term2 = ifelse(term == "density_cod_small_sc", "Cod (< 29)", term2),
+         term2 = ifelse(term == "density_cod_small_sc:density_saduria_sc", "Cod (> 29) x Saduria", term2),
+         term2 = ifelse(term == "density_flounder_sc:density_saduria_sc", "Flounder x Saduria", term2),
+         term2 = ifelse(term == "density_cod_small_sc:density_saduria_sc", "Small cod x Saduria", term2),
+         term2 = ifelse(term == "density_flounder_sc", "Flounder", term2))
 
-# Fixed continuous effects:
-coefs %>% 
-  filter(!term %in% c("phi", "sigma_G", "tweedie_p")) %>% 
+coefs <- coefs %>% 
+  mutate(sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+         sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+
+# Plot
+p1 <- coefs %>% 
   filter(!grepl('year', term)) %>% 
   filter(!grepl('quarter', term)) %>% 
-  ggplot(aes(term2, estimate, color = species)) +
+  filter(model == "Binomial") %>% 
+  filter(response == "Benthic prey") %>% 
+  ggplot(aes(term2, estimate, color = species, fill = species, shape = sig)) +
   geom_hline(yintercept = 0, linetype = 2, color = "gray50", size = 0.2) +
-  geom_point(position = position_dodge(width = 0.8)) +
+  geom_point(position = position_dodge(width = 0.5)) +
   geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0,
-                position = position_dodge(width = 0.8), alpha = 0.5) +
+                position = position_dodge(width = 0.5), alpha = 0.65) +
   scale_color_brewer(palette = "Paired", name = "Species", direction = -1) +
-  facet_wrap(~response) +
-  labs(x = "Predictor", y = "Standardized coefficient") +
+  scale_fill_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_shape_manual(values = c(1, 21)) +
+  guides(fill = "none") +
+  facet_wrap(~ response) +
+  labs(x = "", y = "Standardized coefficient", color = "Model", shape = "95% CI crossing 0") +
   theme(legend.position = "bottom",
-        axis.text.x = element_text(angle = 90),
-        aspect.ratio = 1.5) +
+        aspect.ratio = 1.3,
+        axis.text.x = element_text(angle = 90, vjust = 0.5)) +
   NULL 
 
-ggsave("figures/fr_coefs.pdf", width = 17, height = 17, units = "cm")
+p2 <- coefs %>% 
+  filter(!grepl('year', term)) %>% 
+  filter(!grepl('quarter', term)) %>% 
+  filter(model == "Binomial") %>% 
+  filter(response == "Saduria") %>% 
+  ggplot(aes(term2, estimate, color = species, fill = species, shape = sig)) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray50", size = 0.2) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0,
+                position = position_dodge(width = 0.5), alpha = 0.65) +
+  scale_color_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_fill_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_shape_manual(values = c(1, 21)) +
+  guides(fill = "none") +
+  facet_wrap(~ response) +
+  labs(x = "", y = "", color = "Model", shape = "95% CI crossing 0") +
+  theme(legend.position = "bottom",
+        aspect.ratio = 1.3,
+        axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  NULL 
 
+p3 <- coefs %>% 
+  filter(!grepl('year', term)) %>% 
+  filter(!grepl('quarter', term)) %>% 
+  filter(model == "Binomial") %>% 
+  filter(response == "Total prey") %>% 
+  ggplot(aes(term2, estimate, color = species, fill = species, shape = sig)) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray50", size = 0.2) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0,
+                position = position_dodge(width = 0.5), alpha = 0.65) +
+  scale_color_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_fill_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_shape_manual(values = c(1, 21)) +
+  guides(fill = "none") +
+  facet_wrap(~ response) +
+  labs(x = "", y = "", color = "Model", shape = "95% CI crossing 0") +
+  theme(legend.position = "bottom",
+        aspect.ratio = 1.3,
+        axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  NULL 
+
+(p1 + p2 + p3) + plot_layout(guides = "collect")
+
+ggsave("figures/fr_coefs_binom.pdf", width = 17, height = 17, units = "cm")
+
+
+p1 <- coefs %>% 
+  filter(!grepl('year', term)) %>% 
+  filter(!grepl('quarter', term)) %>% 
+  filter(model == "Binomial") %>% 
+  filter(response == "Benthic prey") %>% 
+  ggplot(aes(term2, estimate, color = species, fill = species, shape = sig)) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray50", size = 0.2) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0,
+                position = position_dodge(width = 0.5), alpha = 0.65) +
+  scale_color_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_fill_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_shape_manual(values = c(1, 21)) +
+  guides(fill = "none") +
+  facet_wrap(~ response) +
+  labs(x = "", y = "Standardized coefficient", color = "Model", shape = "95% CI crossing 0") +
+  theme(legend.position = "bottom",
+        aspect.ratio = 1.3,
+        axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  NULL 
+
+p2 <- coefs %>% 
+  filter(!grepl('year', term)) %>% 
+  filter(!grepl('quarter', term)) %>% 
+  filter(model == "Binomial") %>% 
+  filter(response == "Saduria") %>% 
+  ggplot(aes(term2, estimate, color = species, fill = species, shape = sig)) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray50", size = 0.2) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0,
+                position = position_dodge(width = 0.5), alpha = 0.65) +
+  scale_color_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_fill_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_shape_manual(values = c(1, 21)) +
+  guides(fill = "none") +
+  facet_wrap(~ response) +
+  labs(x = "", y = "", color = "Model", shape = "95% CI crossing 0") +
+  theme(legend.position = "bottom",
+        aspect.ratio = 1.3,
+        axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  NULL 
+
+p3 <- coefs %>% 
+  filter(!grepl('year', term)) %>% 
+  filter(!grepl('quarter', term)) %>% 
+  filter(model == "Binomial") %>% 
+  filter(response == "Total prey") %>% 
+  ggplot(aes(term2, estimate, color = species, fill = species, shape = sig)) +
+  geom_hline(yintercept = 0, linetype = 2, color = "gray50", size = 0.2) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0,
+                position = position_dodge(width = 0.5), alpha = 0.65) +
+  scale_color_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_fill_brewer(palette = "Paired", name = "Species", direction = -1) +
+  scale_shape_manual(values = c(1, 21)) +
+  guides(fill = "none") +
+  facet_wrap(~ response) +
+  labs(x = "", y = "", color = "Model", shape = "95% CI crossing 0") +
+  theme(legend.position = "bottom",
+        aspect.ratio = 1.3,
+        axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  NULL 
+
+(p1 + p2 + p3) + plot_layout(guides = "collect")
+
+ggsave("figures/fr_coefs_lognorm.pdf", width = 17, height = 17, units = "cm")
+
+
+# Year effects
 coefs %>% 
   filter(term %in% c("fyear2015", "fyear2016", "fyear2017", "fyear2018", "fyear2019", "fyear2020", "quarter")) %>% 
   mutate(term2 = ifelse(term == "fyear2015", "2015", term2),
@@ -801,11 +1005,11 @@ coefs %>%
   geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0,
                 position = position_dodge(width = 0.5)) +
   scale_color_brewer(palette = "Paired", name = "Species", direction = -1) +
-  facet_wrap(~response, scales = "free") +
+  facet_grid(model~response) +
   labs(x = "Predictor", y = "Standardized coefficient") +
   theme(legend.position = "bottom",
         axis.text.x = element_text(angle = 90),
-        aspect.ratio = 1.5) +
+        aspect.ratio = 1.3) +
   NULL 
 
 ggsave("figures/supp/fr_coefs_yr.pdf", width = 17, height = 17, units = "cm")
@@ -826,97 +1030,167 @@ ggsave("figures/supp/fr_coefs_yr.pdf", width = 17, height = 17, units = "cm")
 #   control = sdmTMBcontrol(newton_loops = 1)
 #   )
 
-s_cod_sad2 <- sdmTMB(
-  data = small_cod_stomach,
-  formula = saduria_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc*oxy_sc,
-  family = tweedie(link = "log"),
-  time = "year",
-  spatiotemporal = "off",
-  spatial = "off",
-  mesh = small_cod_spde,
-  priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
-  control = sdmTMBcontrol(newton_loops = 1)
-  )
+# visreg_delta(s_cod_sad, xvar = "density_flounder_sc", model = 1, gg = TRUE, by = "oxy_sc")
+# visreg_delta(s_cod_sad, xvar = "density_flounder_sc", model = 2, gg = TRUE)
+# visreg_delta(s_cod_sad, xvar = "density_flounder_sc", model = 1, gg = TRUE, by = "oxy_sc")
 
-l_cod_sad2 <- sdmTMB(
-  data = large_cod_stomach,
-  formula = saduria_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc + density_cod_large_sc + density_flounder_sc*oxy_sc,
-  family = tweedie(link = "log"),
-  time = "year",
-  spatiotemporal = "off",
-  spatial = "off",
-  mesh = large_cod_spde,
-  priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
-  control = sdmTMBcontrol(newton_loops = 1)
-  )
+hist(fle_sad$data$density_cod_small_sc)
 
+fle1 <- visreg_delta(fle_sad,
+                     xvar = "density_cod_small_sc",
+                     model = 1,
+                     plot = FALSE,
+                     by = "density_saduria_sc",
+                     breaks = c(-0.5, 0.5)
+                     )
 
-fle_sad2 <- sdmTMB(
-  data = flounder_stomach,
-  formula = saduria_feeding_ratio ~ 0 + fyear + fquarter + temp_sc + depth_sc + density_cod_small_sc*oxy_sc + density_cod_large_sc + density_flounder_sc,
-  family = tweedie(link = "log"),
-  time = "year",
-  spatiotemporal = "off",
-  spatial = "off",
-  mesh = flounder_spde,
-  priors = sdmTMBpriors(
-    b = normal(c(rep(NA, 7), rep(0, 7)),
-               c(rep(NA, 7), rep(1, 7)))),
-  control = sdmTMBcontrol(newton_loops = 1)
-  )
+fle2 <- visreg_delta(fle_sad,
+                     xvar = "density_cod_small_sc",
+                     model = 2,
+                     plot = FALSE,
+                     by = "density_saduria_sc",
+                     breaks = c(-0.5, 0.5))
 
+scod1 <- visreg_delta(s_cod_sad,
+                      xvar = "density_flounder_sc",
+                      model = 1,
+                      plot = FALSE,
+                      by = "density_saduria_sc",
+                      breaks = c(-0.5, 0.5))
 
-quantile(flounder_stomach$density_flounder, prob = c(0.1, 0.9))
+scod2 <- visreg_delta(s_cod_sad,
+                      xvar = "density_flounder_sc",
+                      model = 2,
+                      plot = FALSE,
+                      by = "density_saduria_sc",
+                      breaks = c(-0.5, 0.5))
 
-nd_fle <- data.frame(density_flounder = seq(0, 5000, length.out = 100))
+lcod1 <- visreg_delta(l_cod_sad,
+                      xvar = "density_flounder_sc",
+                      model = 1,
+                      plot = FALSE,
+                      by = "density_saduria_sc",
+                      breaks = c(-0.5, 0.5))
 
-nd_fle <- nd_fle %>%
-  mutate(density_flounder_sc = (density_flounder - mean(flounder_stomach$density_flounder)) / sd(flounder_stomach$density_flounder),
-         year = 2017L,
-         fyear = as.factor(2017),
-         fquarter = as.factor(1),
-         temp_sc = 0,
-         depth_sc = 0,
-         oxy_sc = 0,
-         density_cod_small_sc = 0,
-         density_cod_large_sc = 0
-         )
+lcod2 <- visreg_delta(l_cod_sad,
+                      xvar = "density_flounder_sc",
+                      model = 2,
+                      plot = FALSE,
+                      by = "density_saduria_sc",
+                      breaks = c(-0.5, 0.5))
 
-# Predict from full model
-sc_margin_sad <- predict(s_cod_sad2, newdata = nd_fle, se_fit = TRUE, re_form = NA, re_form_iid = NA) %>% 
-  mutate(species2 = "Small cod")
+visreg_fit <- bind_rows(fle1$fit %>% mutate(model = "fle1"),
+                        fle2$fit %>% mutate(model = "fle2"),
+                        scod1$fit %>% mutate(model = "scod1"),
+                        scod2$fit %>% mutate(model = "scod2"),
+                        lcod1$fit %>% mutate(model = "lcod1"),
+                        lcod2$fit %>% mutate(model = "lcod2")
+                        )
 
-lc_margin_sad <- predict(l_cod_sad2, newdata = nd_fle, se_fit = TRUE, re_form = NA, re_form_iid = NA) %>% 
-  mutate(species2 = "Large cod")
+visreg_res <- bind_rows(fle1$res %>% mutate(model = "fle1"),
+                        fle2$res %>% mutate(model = "fle2"),
+                        scod1$res %>% mutate(model = "scod1"),
+                        scod2$res %>% mutate(model = "scod2"),
+                        lcod1$res %>% mutate(model = "lcod1"),
+                        lcod2$res %>% mutate(model = "lcod2")
+                        )
 
-f_margin_sad <- predict(fle_sad2, newdata = nd_fle, se_fit = TRUE, re_form = NA, re_form_iid = NA) %>% 
-  mutate(species2 = "Flounder")
+visreg_fit <- visreg_fit %>% 
+  mutate(species = ifelse(model %in% c("fle1", "fle2"), "Flounder", NA),
+         species = ifelse(model %in% c("scod1", "scod2"), "Small cod", species),
+         species = ifelse(model %in% c("lcod1", "lcod2"), "Large cod", species)) %>% 
+  mutate(model_comp = ifelse(model %in% c("fle1", "scod1", "lcod1"), "Binomial", "LogNormal"))
 
-cond_effects <- bind_rows(sc_margin_sad, lc_margin_sad, f_margin_sad)
+visreg_res <- visreg_res %>% 
+  mutate(species = ifelse(model %in% c("fle1", "fle2"), "Flounder", NA),
+         species = ifelse(model %in% c("scod1", "scod2"), "Small cod", species),
+         species = ifelse(model %in% c("lcod1", "lcod2"), "Large cod", species)) %>% 
+  mutate(model_comp = ifelse(model %in% c("fle1", "scod1", "lcod1"), "Binomial", "LogNormal"))
 
-ggplot(cond_effects, aes(density_flounder, exp(est),
-                         ymin = exp(est - 1.96 * est_se),
-                         ymax = exp(est + 1.96 * est_se), 
-                         color = species2,
-                         fill = species2,
-                         linetype = species2)) +
-  geom_ribbon(alpha = 0.2, color = NA) +
-  theme(aspect.ratio = 1) +
-  scale_color_brewer(palette = "Paired", name = "Species", direction = -1) +
-  scale_fill_brewer(palette = "Paired", name = "Species", direction = -1) +
-  scale_linetype_manual(values = c(3, 2, 1)) +
-  guides(linetype = "none",
-         color = guide_legend(override.aes = list(linetype = c(3, 2, 1)))) + 
-  geom_line(size = 1) +
-  labs(x = "Flounder biomass density",
-       y = "Saduria feeding ratio") + 
-  theme(legend.position = c(0.9, 0.9))
+pal <- brewer.pal(n = 9, name = "Set3")[4:5]
+
+# Flounder
+p1 <- ggplot(visreg_fit %>% filter(species == "Flounder"),
+             aes(x = density_cod_small_sc, y = visregFit, fill = factor(density_saduria_sc), color = factor(density_saduria_sc))) +
+  facet_grid(model_comp ~ species) +
+  geom_point(aes(y = visregRes), data = visreg_res %>% filter(species == "Flounder"), size = 1, alpha = 0.5) + 
+  geom_ribbon(aes(ymin = visregLwr, ymax = visregUpr), alpha = 0.2, color = NA) +
+  geom_line() +
+  # scale_color_brewer(palette = "Set1") +
+  # scale_fill_brewer(palette = "Set1") +
+  # scale_color_brewer(palette = "Accent") +
+  # scale_fill_brewer(palette = "Accent") +
+  labs(x = "Small cod density (scaled)",
+       color = "Saduria density (scaled)") +
+  guides(fill = "none") +
+  scale_color_manual(values = pal) +
+  scale_fill_manual(values = pal) +
+  theme(aspect.ratio = 1.1) +
+  theme_plot(base_size = 6) +
+  NULL
+
+# Small cod
+p2 <- ggplot(visreg_fit %>% filter(species == "Small cod"),
+             aes(x = density_flounder_sc, y = visregFit, fill = factor(density_saduria_sc), color = factor(density_saduria_sc))) +
+  #ggh4x::facet_grid2(model_comp ~ species, scales = "free_y", independent = "y") +
+  facet_grid(model_comp ~ species) +
+  geom_point(aes(y = visregRes), data = visreg_res %>% filter(species == "Small cod"), size = 1, alpha = 0.2) + 
+  geom_ribbon(aes(ymin = visregLwr, ymax = visregUpr), alpha = 0.2, color = NA) +
+  geom_line() +
+  labs(x = "Flounder density (scaled)"#,
+       #color = "Saduria density (scaled)"
+       ) +
+  guides(fill = "none",
+         color = "none") +
+  scale_color_manual(values = pal) +
+  scale_fill_manual(values = pal) +
+  theme(aspect.ratio = 1.1) +
+  theme_plot(base_size = 6) +
+  NULL
+
+# Large cod
+p3 <- ggplot(visreg_fit %>% filter(species == "Large cod"),
+             aes(x = density_flounder_sc, y = visregFit, fill = factor(density_saduria_sc), color = factor(density_saduria_sc))) +
+  #ggh4x::facet_grid2(model_comp ~ species, scales = "free_y", independent = "y") +
+  #ggh4x::facet_grid2(model_comp ~ species, scales = "free_y", independent = "y") +
+  facet_grid(model_comp ~ species) +
+  geom_point(aes(y = visregRes), data = visreg_res %>% filter(species == "Large cod"), size = 1, alpha = 0.2) + 
+  geom_ribbon(aes(ymin = visregLwr, ymax = visregUpr), alpha = 0.2, color = NA) +
+  geom_line() +
+  labs(x = "Flounder density (scaled)"#,
+       #color = "Saduria density (scaled)"
+       ) +
+  guides(fill = "none",
+         color = "none") +
+  scale_color_manual(values = pal) +
+  scale_fill_manual(values = pal) +
+  theme(aspect.ratio = 1.1) +
+  theme_plot(base_size = 6) +
+  NULL
+
+(p1 + p2 + p3) + plot_layout(guides = "collect")  & theme(aspect.ratio = 1)
   
-ggsave("figures/flounder_saduria_conditional.pdf", width = 17, height = 17, units = "cm")
+# visreg_fit %>%
+#   #filter(species == "Large cod") %>%
+#   group_by(species, model) %>%
+#   summarise(max_covar = max(density_flounder_sc),
+#             min_covar = min(density_flounder_sc))
+
+# Option 2
+# ggplot(visreg_fit, aes(x = density_flounder_sc, y = visregFit, fill = factor(density_saduria_sc), color = factor(density_saduria_sc))) +
+#   facet_grid2(model_comp ~ species) +
+#   geom_ribbon(aes(ymin = visregLwr, ymax = visregUpr), alpha = 0.2, color = NA) +
+#   geom_line() +
+#   labs(x = "Flounder density (scaled)",
+#        color = "Saduria density") +
+#   guides(fill = "none") +
+#   geom_point(aes(y = visregRes), data = visreg_res, size = 1, alpha = 0.2) + 
+#   scale_color_brewer(palette ="Dark2") +
+#   scale_fill_brewer(palette = "Dark2") +
+#   theme(aspect.ratio = 1.1) +
+#   NULL
+
+ggsave("figures/conditional_saduria.pdf", width = 25, height = 16, units = "cm")
 ```
 
 
