@@ -28,7 +28,9 @@ theme_plot <- function(base_size = 11, base_family = "") {
       legend.margin = margin(0, 0, 0, 0),
       legend.box.margin = margin(-5, -5, -5, -5),
       strip.text = element_text(size = 9, colour = 'gray10', margin = margin(b = 1, t = 1)),
-      strip.background = element_rect(fill = "grey95")
+      strip.background = element_rect(fill = "grey95"),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank()
     )
 }
 
