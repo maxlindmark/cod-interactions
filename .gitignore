@@ -33,6 +33,10 @@ data/
 # Large model output files
 output/
 
+# Folders
+meetings/
+conferences/
+
 # Extra figures
 figures/supp/cpue_oxygen_rasters/
 figures/supp/cpue_sal_rasters/
