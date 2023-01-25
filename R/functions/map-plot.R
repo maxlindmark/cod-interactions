@@ -72,6 +72,29 @@ plot_map <-
          fill = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
   NULL
 
+# This is for the diet data
+xmin3 <- 303000
+xmax3 <- 916000
+xrange <- xmax2 - xmin3
+
+ymin3 <- 5980000
+ymax3 <- 6580000
+yrange <- ymax3 - ymin3
+
+plot_map_d <- 
+  ggplot(swe_coast_proj) + 
+  xlim(xmin3*1.5, xmax3*0.9) +
+  ylim(ymin3*1.025, ymax3*0.98268) + 
+  labs(x = "Longitude", y = "Latitude") +
+  geom_sf(size = 0.3) + 
+  theme_plot() +
+  guides(colour = guide_colorbar(title.position = "top", title.hjust = 0.5),
+         fill = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
+  NULL
+
+# small_cod_stomach <- read_csv("data/clean/small_cod_stomach.csv") 
+# plot_map_d + geom_point(data = small_cod_stomach, aes(X*1000, Y*1000))
+
 plot_map_fc <- 
   ggplot(swe_coast_proj) + 
   xlim(xmin2, xmax2) +
