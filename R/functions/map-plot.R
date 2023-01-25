@@ -68,6 +68,8 @@ plot_map <-
   labs(x = "Longitude", y = "Latitude") +
   geom_sf(size = 0.3) + 
   theme_plot() +
+  guides(colour = guide_colorbar(title.position = "top", title.hjust = 0.5),
+         fill = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
   NULL
 
 plot_map_fc <- 
@@ -77,6 +79,8 @@ plot_map_fc <-
   labs(x = "Longitude", y = "Latitude") +
   geom_sf(size = 0.3) + 
   theme_facet_map() +
+  guides(colour = guide_colorbar(title.position = "top", title.hjust = 0.5),
+         fill = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
   NULL
 
 plot_map_labels <- 
