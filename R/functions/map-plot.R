@@ -39,11 +39,11 @@ theme_facet_map <- function(base_size = 11, base_family = "") {
 }
 
 # Make default base map plot
-xmin2 <- 303000
-xmax2 <- 916000
+xmin2 <- 380000
+xmax2 <- 810000
 xrange <- xmax2 - xmin2
 
-ymin2 <- 5980000
+ymin2 <- 6100000
 ymax2 <- 6498000
 yrange <- ymax2 - ymin2
 
@@ -111,5 +111,3 @@ plot_map_labels_fc <-
   annotate("text", label = "Russia", x = xmin2 + 0.95*xrange, y = ymin2 + 0.18*yrange, color = "black", size = 1.9) +
   annotate("text", label = "Lithuania", x = xmin2 + 1*xrange, y = ymin2 + 0.43*yrange, color = "black", size = 1.9, angle = 75) +
   annotate("text", label = "Latvia", x = xmin2 + 0.99*xrange, y = ymin2 + 0.65*yrange, color = "black", size = 1.9, angle = 75)
-
-# Diet map plot here!
