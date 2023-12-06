@@ -1,9 +1,14 @@
 library(sf)
+# Packages not on CRAN
+# devtools::install_github("seananderson/ggsidekick") # not on CRAN 
+library(ggsidekick)
+
+theme_set(theme_sleek())
 
 sf::sf_use_s2(FALSE)
 
 # Specify map ranges
-ymin = 52; ymax = 60.5; xmin = 10; xmax = 24
+ymin = 52; ymax = 60.75; xmin = 10; xmax = 24
 
 map_data <- rnaturalearth::ne_countries(
   scale = "medium",
@@ -19,29 +24,10 @@ swe_coast <- suppressWarnings(suppressMessages(
 utm_zone33 <- 32633
 swe_coast_proj <- sf::st_transform(swe_coast, crs = utm_zone33)
 
-# Define plotting theme for main plot
-theme_plot <- function(base_size = 11, base_family = "") {
-  theme_light(base_size = base_size, base_family = "") +
-    theme(
-      legend.position = "bottom",
-      legend.key.height = unit(0.2, "cm"),
-      legend.margin = margin(0, 0, 0, 0),
-      legend.box.margin = margin(-5, -5, -5, -5),
-      strip.text = element_text(size = 9, colour = 'gray10', margin = margin(b = 1, t = 1)),
-      strip.background = element_rect(fill = "grey95"),
-      panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank()
-    )
-}
-
 # Define plotting theme for facet_wrap map with years
 theme_facet_map <- function(base_size = 11, base_family = "") {
-  theme_light(base_size = base_size, base_family = "") +
+  theme_sleek(base_size = base_size, base_family = "") +
     theme(
-      axis.text.x = element_text(angle = 90),
-      axis.text = element_text(size = 7),
-      strip.text = element_text(size = 8, colour = 'gray10', margin = margin(b = 1, t = 1)),
-      strip.background = element_rect(fill = "gray95"),
       legend.direction = "horizontal",
       legend.margin = margin(1, 1, 1, 1),
       legend.box.margin = margin(0, 0, 0, 0),
@@ -58,7 +44,7 @@ xmax2 <- 916000
 xrange <- xmax2 - xmin2
 
 ymin2 <- 5980000
-ymax2 <- 6450000
+ymax2 <- 6498000
 yrange <- ymax2 - ymin2
 
 plot_map <- 
@@ -67,30 +53,30 @@ plot_map <-
   ylim(ymin2, ymax2) +
   labs(x = "Longitude", y = "Latitude") +
   geom_sf(size = 0.3) + 
-  theme_plot() +
+  theme_sleek() +
   guides(colour = guide_colorbar(title.position = "top", title.hjust = 0.5),
          fill = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
   NULL
 
 # This is for the diet data
-xmin3 <- 303000
-xmax3 <- 916000
-xrange <- xmax2 - xmin3
-
-ymin3 <- 5980000
-ymax3 <- 6580000
-yrange <- ymax3 - ymin3
-
-plot_map_d <- 
-  ggplot(swe_coast_proj) + 
-  xlim(xmin3*1.5, xmax3*0.9) +
-  ylim(ymin3*1.025, ymax3*0.98268) + 
-  labs(x = "Longitude", y = "Latitude") +
-  geom_sf(size = 0.3) + 
-  theme_plot() +
-  guides(colour = guide_colorbar(title.position = "top", title.hjust = 0.5),
-         fill = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
-  NULL
+# xmin3 <- 303000
+# xmax3 <- 916000
+# xrange <- xmax2 - xmin3
+# 
+# ymin3 <- 5980000
+# ymax3 <- 6580000
+# yrange <- ymax3 - ymin3
+# 
+# plot_map_d <- 
+#   ggplot(swe_coast_proj) + 
+#   xlim(xmin3*1.5, xmax3*0.9) +
+#   ylim(ymin3*1.025, ymax3*0.98268) + 
+#   labs(x = "Longitude", y = "Latitude") +
+#   geom_sf(size = 0.3) + 
+#   theme_sleek() +
+#   guides(colour = guide_colorbar(title.position = "top", title.hjust = 0.5),
+#          fill = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
+#   NULL
 
 # small_cod_stomach <- read_csv("data/clean/small_cod_stomach.csv") 
 # plot_map_d + geom_point(data = small_cod_stomach, aes(X*1000, Y*1000))
