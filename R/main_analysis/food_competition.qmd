@@ -825,9 +825,10 @@ ggplot(pred_df %>% filter(model == "Saduria" & xvar == "flounder"),
   facet_wrap(~group, scales = "free", ncol = 1) +
   scale_color_brewer(palette = "Dark2") +
   scale_fill_brewer(palette = "Dark2") +
+  coord_cartesian(xlim = c(-0.5, 0.5)) +
   labs(x = "Flounder density", y = "Relative saduria weight",
        color = "Saduria", fill = "Saduria") + 
-  theme(legend.position = c(0.88, 0.94),
+  theme(legend.position = c(0.88, 0.19),
         strip.text.x.top = element_text(angle = 0, hjust = 0))
 
 ggsave(paste0(home, "/figures/conditional_saduria_flounder.pdf"), width = 9, height = 17, units = "cm")
