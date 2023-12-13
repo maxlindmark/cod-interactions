@@ -1,0 +1,866 @@
+---
+title: "Food competition analysis"
+author: "Max Lindmark"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 80%
+editor: source
+execute: 
+  echo: true
+  eval: true
+  cache: false
+---
+
+## Load packages
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries, install if needed
+pkgs <- c("tidyverse", "tidylog", "RCurl", "sdmTMB", "RColorBrewer", "RCurl", "devtools",
+          "patchwork")
+
+if(length(setdiff(pkgs, rownames(installed.packages()))) > 0){
+
+    install.packages(setdiff(pkgs, rownames(installed.packages())), dependencies = T)
+
+}
+
+invisible(lapply(pkgs, library, character.only = T))
+
+# Some extra packages not on cran
+library(ggstats)
+library(ggh4x)
+library(sdmTMBextra)
+
+# Source map-plot
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+
+home <- here::here()
+```
+
+## Read data & prepare data
+
+```{r read data}
+#| warning: false
+
+d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
+
+# Calculate relative prey weights (saduria and benthos)
+d <- d %>% 
+  drop_na(group) %>% 
+  drop_na(oxy) %>% 
+  rename(oxygen = oxy) %>% 
+  mutate(tot_weight = rowSums(select(., ends_with('_tot'))),  
+         benthic_weight = amphipoda_tot + bivalvia_tot + gadus_morhua_tot +
+           gobiidae_tot + mysidae_tot + non_bio_tot + 
+           other_crustacea_tot + other_tot + other_pisces_tot + platichthys_flesus_tot +
+           polychaeta_tot + saduria_entomon_tot) %>% 
+  rename(saduria_weight = saduria_entomon_tot,
+         flounder_density = fle_kg_km2,
+         large_cod_density = mcod_kg_km2,
+         small_cod_density = scod_kg_km2) %>% 
+  mutate(tot_rel_weight = tot_weight / (pred_weight_g - tot_weight), 
+         benthic_rel_weight = benthic_weight / (pred_weight_g - tot_weight),
+         saduria_rel_weight = saduria_weight / (pred_weight_g - tot_weight)) %>% 
+  dplyr::select(-ends_with("_tot")) %>% 
+  dplyr::select(-predator_latin_name, date) %>% 
+  # scale variables
+  mutate(fyear = as.factor(year),
+         fquarter = as.factor(quarter),
+         fhaul_id = as.factor(haul_id),
+         depth_sc = as.numeric(scale(depth)),
+         oxygen_sc = as.numeric(scale(oxygen)),
+         density_saduria_sc = as.numeric(scale(density_saduria)),
+         flounder_density_sc = as.numeric(scale(flounder_density)),
+         large_cod_density_sc = as.numeric(scale(large_cod_density)),
+         small_cod_density_sc = as.numeric(scale(small_cod_density)))
+```
+
+## Quick explore
+
+```{r}
+# ggplot(d, aes(pred_length_cm, saduria_rel_weight)) + 
+#   geom_point() + 
+#   geom_smooth(formula = y ~ poly(x, 2))
+# 
+# ggplot(d, aes(pred_length_cm, saduria_rel_weight)) + 
+#   geom_point() + 
+#   geom_smooth(formula = y ~ poly(x, 2))
+```
+
+## Fit models
+
+Groups are: small cod, large cod and flounder. Response variables are: saduria_rel_weight, benthic_rel_weight or total weight. The latter is only for adult cod, because essentially all prey are benthic for small cod and flounder.
+
+```{r}
+#| message: false
+#| warning: false
+# This is the reason we don't do total weight for flounder and small cod
+d %>%
+  filter(tot_rel_weight > 0) %>% 
+  group_by(group) %>% 
+  mutate(ben_prop = benthic_rel_weight / tot_rel_weight) %>% 
+  summarise(mean_ben_prop = mean(ben_prop))
+```
+
+Covariates are: \~ 0 + fyear + fquarter + depth_sc + spatial + spatiotemporal random fields + density covariates. For saduria, we use saduria also in interaction with cod and flounder. For cod we use small cod because large and small cod are very correlated. For benthic and total prey, we instead use oxygengen, more as a proxygen, as the interaction variable
+
+### Compare models with different spatial terms and evaluate AIC
+
+```{r}
+aic_list <- list()
+
+for(i in unique(d$group)) {
+  
+  dd <- filter(d, group == i)
+  
+  mesh <- make_mesh(dd,
+                    xy_cols = c("X", "Y"),
+                    cutoff = 15)
+
+  # Saduria model - non spatial
+  m_sad_0 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*density_saduria_sc + 
+                      flounder_density_sc*density_saduria_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off", 
+                    spatial = "off",
+                    time = "year")
+  
+  sanity(m_sad_0)
+  
+  # Saduria model - spatial
+  m_sad_1 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*density_saduria_sc + 
+                      flounder_density_sc*density_saduria_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off", 
+                    spatial = "on",
+                    time = "year")
+  
+  sanity(m_sad_1)
+  
+  # Saduria model - spatiotemporal
+  m_sad_2 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*density_saduria_sc + 
+                      flounder_density_sc*density_saduria_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID", 
+                    spatial = "off",
+                    time = "year")
+  
+  sanity(m_sad_2)
+  
+  # Saduria model - spatial and spatiotemporal
+  m_sad_3 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*density_saduria_sc + 
+                      flounder_density_sc*density_saduria_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID", 
+                    spatial = "on",
+                    time = "year")
+  
+  sanity(m_sad_3)
+  
+  
+  
+  # Benthos model - non spatial
+  m_ben_0 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off", 
+                    spatial = "off",
+                    time = "year")
+  
+  sanity(m_ben_0)
+  
+  # Benthos model - spatial
+  m_ben_1 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off", 
+                    spatial = "on",
+                    time = "year")
+  
+  sanity(m_ben_1)
+  
+  
+  # Benthos model - spatiotemporal
+  m_ben_2 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID", 
+                    spatial = "off",
+                    time = "year")
+  
+  sanity(m_ben_2)
+  
+  
+  # Benthos model - spatial and spatiotemporal
+  m_ben_3 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID", 
+                    spatial = "on",
+                    time = "year")
+  
+  sanity(m_ben_3)
+  
+  
+  # Total model for adult cod only
+  
+  if(unique(dd$group) == "large cod") {
+    
+    m_tot_0 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off", 
+                    spatial = "off",
+                    time = "year")
+    
+    sanity(m_tot_0)
+    
+    m_tot_1 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off", 
+                    spatial = "on",
+                    time = "year")
+    
+    sanity(m_tot_1)
+  
+    m_tot_2 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID", 
+                    spatial = "off",
+                    time = "year")
+    
+    sanity(m_tot_2)
+    
+    m_tot_3 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID", 
+                    spatial = "on",
+                    time = "year")
+    
+    sanity(m_tot_3)
+    
+  } else {
+    
+    m_tot_0 <- m_sad_0
+    m_tot_1 <- m_sad_0
+    m_tot_2 <- m_sad_0
+    m_tot_3 <- m_sad_0
+    
+  }
+  
+  # Combine all AIC values
+  aic <- data.frame(response = rep(c("sad", "ben", "tot"), times = 4), 
+                    group = i,
+                    model = rep(c("non-spatial", "spatial", "spatiotemporal", "spatial and spatiotemporal"), each = 3),
+                    aic = c(AIC(m_sad_0), AIC(m_ben_0), AIC(m_tot_0),
+                            AIC(m_sad_1), AIC(m_ben_1), AIC(m_tot_1),
+                            AIC(m_sad_2), AIC(m_ben_2), AIC(m_tot_2),
+                            AIC(m_sad_3), AIC(m_ben_3), AIC(m_tot_3)))
+  
+  aic_list[[i]] <- aic
+
+}
+
+daic <- bind_rows(aic_list) %>% 
+  mutate(keep = ifelse(response == "tot" & !group == "large cod", "N", "Y")) %>% 
+  filter(keep == "Y") %>% 
+  dplyr::select(-keep) %>% 
+  group_by(response, group) %>% 
+  mutate(delta_aic = aic - min(aic))
+
+ggplot(daic, aes(group, delta_aic, color = model)) +
+  geom_point(position = position_dodge2(width = 0.1)) +
+  facet_wrap(~response) +
+  scale_color_brewer(palette = "Dark2") +
+  theme(legend.position = "bottom")
+
+# Make this a table
+daic %>% 
+  dplyr::select(-aic) %>% 
+  arrange(response) %>% 
+  pivot_wider(names_from = model, values_from = delta_aic)
+```
+
+## Main models
+
+```{r}
+pred_flounder_sad <- list()
+pred_flounder_ben <- list()
+pred_cod_sad <- list()
+pred_cod_ben <- list()
+coef_sad <- list()
+coef_ben <- list()
+res_sad <- list()
+res_ben <- list()
+random_sad <- list()
+random_ben <- list()
+
+for(i in unique(d$group)) {
+  
+  dd <- filter(d, group == i)
+  
+  mesh <- make_mesh(dd,
+                    xy_cols = c("X", "Y"),
+                    cutoff = 15)
+
+  ggplot() +
+    inlabru::gg(mesh$mesh) +
+    coord_fixed() +
+    geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
+    annotate("text", -Inf, Inf, label = paste("n knots =", mesh$mesh$n), hjust = -0.3, vjust = 3) + 
+    labs(x = "Easting (km)", y = "Northing (km)")
+  
+  ggsave(paste0(home, "/figures/supp/meshes/mesh_", i, ".pdf"), width = 17, height = 17, units = "cm")
+  
+  # Saduria model
+  m_sad <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
+                    small_cod_density_sc*density_saduria_sc + 
+                    flounder_density_sc*density_saduria_sc,
+                  data = dd,
+                  mesh = mesh,
+                  family = tweedie(),
+                  spatiotemporal = "IID", 
+                  spatial = "on",
+                  time = "year")
+  
+  sanity(m_sad)
+  print(m_sad)
+  
+  # Residuals
+  samps <- sdmTMBextra::predict_mle_mcmc(m_sad, mcmc_iter = 201, mcmc_warmup = 200)
+  mcmc_res <- residuals(m_sad, type = "mle-mcmc", mcmc_samples = samps)
+  dd$res <- as.vector(mcmc_res)
+    
+  res_sad[[i]] <- dd
+  
+  
+  
+  # Benthic model
+  m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                    small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                  data = dd,
+                  mesh = mesh,
+                  family = tweedie(),
+                  spatiotemporal = "IID", 
+                  spatial = "on",
+                  time = "year")
+  
+  sanity(m_ben)
+  print(m_ben)
+  
+  # Residuals
+  samps <- sdmTMBextra::predict_mle_mcmc(m_ben, mcmc_iter = 201, mcmc_warmup = 200)
+  mcmc_res <- residuals(m_ben, type = "mle-mcmc", mcmc_samples = samps)
+  dd$res <- as.vector(mcmc_res)
+    
+  res_ben[[i]] <- dd
+  
+
+  
+  # Conditional effects: flounder
+  nd_flounder <- data.frame(expand_grid(
+    density_saduria_sc = c(quantile(d$density_saduria_sc, probs = 0.05),
+                           quantile(d$density_saduria_sc, probs = 0.95)),
+    flounder_density_sc = seq(quantile(dd$flounder_density_sc, probs = 0.05),
+                              quantile(dd$flounder_density_sc, probs = 0.95),
+                              length.out = 50))) %>%
+    mutate(year = 2020,
+           fyear = as.factor(2020),
+           fquarter = as.factor(1),
+           oxygen_sc = 0, 
+           depth_sc = 0,
+           small_cod_density_sc = 0,
+           fhaul_id = as.factor("2020_1_81")) # TODO: why do I need this when I specify re_form_iid!?
+
+  preds_flounder_sad <- predict(m_sad, newdata = nd_flounder, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+  preds_flounder_ben <- predict(m_ben, newdata = nd_flounder, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+
+  pred_flounder_sad[[i]] <- preds_flounder_sad %>% mutate(group = i, xvar = "flounder")
+  pred_flounder_ben[[i]] <- preds_flounder_ben %>% mutate(group = i, xvar = "flounder")
+  
+  # Conditional effects: cod
+  nd_cod <- data.frame(expand_grid(
+    density_saduria_sc = c(quantile(d$density_saduria_sc, probs = 0.05),
+                           quantile(d$density_saduria_sc, probs = 0.95)),
+    small_cod_density_sc = seq(quantile(dd$small_cod_density_sc, probs = 0.05),
+                               quantile(dd$small_cod_density_sc, probs = 0.95),
+                               length.out = 50))) %>%
+    mutate(year = 2020,
+           fyear = as.factor(2020),
+           fquarter = as.factor(1),
+           oxygen_sc = 0, 
+           depth_sc = 0,
+           flounder_density_sc = 0,
+           fhaul_id = as.factor("2020_1_81")) # TODO: why do I need this when I specify re_form_iid!?
+
+  preds_cod_sad <- predict(m_sad, newdata = nd_cod, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+  preds_cod_ben <- predict(m_ben, newdata = nd_cod, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+
+  pred_cod_sad[[i]] <- preds_cod_sad %>% mutate(group = i, xvar = "cod")
+  pred_cod_ben[[i]] <- preds_cod_ben %>% mutate(group = i, xvar = "cod")
+  
+  
+  
+  # Spatial and spatiotemporal random effects
+  d_haul <- dd %>% 
+    distinct(haul_id, .keep_all = TRUE)
+  
+  preds_sad <- predict(m_sad, newdata = d_haul)
+  preds_ben <- predict(m_ben, newdata = d_haul)
+  
+  plot_map_fc + 
+    geom_point(data = preds_sad, aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) + 
+    scale_color_gradient2() +
+    facet_wrap(~ year) +
+    labs(color = "Spatiotemporal\nrandom effect") +
+    theme(legend.position = c(0.84, 0.16),
+          axis.text.x = element_text(angle = 90))
+  
+  ggsave(paste0(home, "/figures/supp/epsilon_sad_", i, ".pdf"), width = 17, height = 17, units = "cm")
+  
+  plot_map_fc + 
+    geom_point(data = preds_ben, aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) + 
+    scale_color_gradient2() +
+    facet_wrap(~ year) +
+    labs(color = "Spatiotemporal\nrandom effect") +
+    theme(legend.position = c(0.84, 0.16),
+          axis.text.x = element_text(angle = 90))
+  
+  ggsave(paste0(home, "/figures/supp/epsilon_ben_", i, ".pdf"), width = 17, height = 17, units = "cm")
+  
+  # Save the spatial random effects in a list instead
+  random_sad[[i]] <- preds_sad
+  random_ben[[i]] <- preds_ben
+  
+  
+  # Coefficients
+  coefs_sad <- bind_rows(tidy(m_sad, effects = "fixed", conf.int = TRUE)) %>% 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coefs_ben <- bind_rows(tidy(m_ben, effects = "fixed", conf.int = TRUE)) %>% 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coef_sad[[i]] <- coefs_sad %>% mutate(group = i)
+  coef_ben[[i]] <- coefs_ben %>% mutate(group = i)
+
+}
+```
+
+## Now do a separate model for adult cod looking at total prey
+
+```{r}
+pred_flounder_tot <- list()
+pred_cod_tot <- list()
+coef_tot <- list()
+res_tot <- list()
+random_tot <- list()
+
+
+  dd <- filter(d, group == "large cod")
+  
+  mesh <- make_mesh(dd,
+                    xy_cols = c("X", "Y"),
+                    cutoff = 15)
+
+  # Total model
+  # NOTE: turning off spatial here due to convergence and AIC
+  m_tot <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                    small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                  data = dd,
+                  mesh = mesh,
+                  family = tweedie(),
+                  spatiotemporal = "IID", 
+                  spatial = "on",
+                  time = "year")
+  
+  sanity(m_tot)
+  print(m_tot)
+  
+  # Residuals
+  samps <- sdmTMBextra::predict_mle_mcmc(m_tot, mcmc_iter = 201, mcmc_warmup = 200)
+  mcmc_res <- residuals(m_tot, type = "mle-mcmc", mcmc_samples = samps)
+  dd$res <- as.vector(mcmc_res)
+    
+  res_tot <- dd
+  
+  
+  # Conditional effects: flounder
+  # preds_flounder_tot <- predict(m_tot, newdata = nd_flounder, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+  # preds_flounder_tot <- preds_flounder_tot %>% mutate(group = "large cod", xvar = "flounder")
+  # 
+  # # Conditional effects: cod
+  # preds_cod_tot <- predict(m_tot, newdata = nd_cod, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+  # preds_cod_tot <- preds_cod_tot %>% mutate(group = "large cod", xvar = "cod")
+   
+  
+  
+  # Spatial and spatiotemporal random effects
+  d_haul <- dd %>% 
+    distinct(haul_id, .keep_all = TRUE)
+  
+  preds_tot <- predict(m_tot, newdata = d_haul)
+  
+  plot_map_fc + 
+    geom_point(data = preds_tot, aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) + 
+    scale_color_gradient2() +
+    facet_wrap(~ year) +
+    labs(color = "Spatiotemporal\nrandom effect") +
+    theme(legend.position = c(0.84, 0.16),
+          axis.text.x = element_text(angle = 90))
+  
+  ggsave(paste0(home, "/figures/supp/epsilon_tot_", "large cod", ".pdf"), width = 17, height = 17, units = "cm")
+  
+  
+  
+  # Coefficients
+  coefs_tot <- bind_rows(tidy(m_tot, effects = "fixed", conf.int = TRUE)) %>% 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coefs_tot <- coefs_tot %>% mutate(group = "large cod")
+  
+```
+
+## Make dataframes
+
+```{r}
+coef_df <- bind_rows(bind_rows(coef_sad) %>% mutate(model = "Saduria"),
+                     bind_rows(coef_ben) %>% mutate(model = "Benthos"))
+
+coef_df <- coef_df %>% bind_rows(coefs_tot %>% mutate(model = "Total"))
+
+
+pred_cod_df <- bind_rows(bind_rows(pred_cod_sad) %>% mutate(model = "Saduria"),
+                         bind_rows(pred_cod_ben) %>% mutate(model = "Benthos"))
+
+pred_flounder_df <- bind_rows(bind_rows(pred_flounder_sad) %>% mutate(model = "Saduria"),
+                              bind_rows(pred_flounder_ben) %>% mutate(model = "Benthos"))
+
+res_df <- bind_rows(bind_rows(res_sad) %>% mutate(model = "Saduria"),
+                    bind_rows(res_ben) %>% mutate(model = "Benthos"))
+
+res_df <- res_df %>% bind_rows(res_tot %>% mutate(model = "Total"))
+
+random_df <- bind_rows(bind_rows(random_sad) %>% mutate(model = "Saduria"),
+                       bind_rows(random_ben) %>% mutate(model = "Benthos"))
+
+random_df <- random_df %>% bind_rows(preds_tot %>% mutate(model = "Total"))
+```
+
+## Plot spatial random effects
+
+```{r}
+random_df <- random_df %>%
+  mutate(group = str_to_sentence(group))
+
+sad_omega <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Saduria"), aes(X*1000, Y*1000, color = omega_s), size = 0.9) +
+  scale_color_gradient2() +
+  facet_wrap(~ group) +
+  labs(color = "Spatial\nrandom effect") +
+  theme(axis.text.x = element_text(angle = 90),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.key.width = unit(0.4, "cm"),
+        legend.key.height = unit(0.4, "cm")) +
+  ggtitle("Saduria")
+
+ben_omega <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Benthos"), aes(X*1000, Y*1000, color = omega_s), size = 0.9) +
+  scale_color_gradient2() +
+  facet_wrap(~ group) +
+  labs(color = "Spatial\nrandom effect") +
+  theme(axis.text.x = element_text(angle = 90),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.key.width = unit(0.4, "cm"),
+        legend.key.height = unit(0.4, "cm")) +
+  ggtitle("Benthos")
+
+sad_omega / ben_omega 
+
+ggsave(paste0(home, "/figures/supp/omega.pdf"), width = 17, height = 14, units = "cm")
+
+# Now total 
+plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Total"), aes(X*1000, Y*1000, color = omega_s), size = 0.9) +
+  scale_color_gradient2() +
+  facet_wrap(~ group) +
+  labs(color = "Spatial\nrandom effect") +
+  theme(axis.text.x = element_text(angle = 90),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.key.width = unit(0.4, "cm"),
+        legend.key.height = unit(0.4, "cm"))
+
+ggsave(paste0(home, "/figures/supp/omega_tot.pdf"), width = 11, height = 9, units = "cm")
+```
+
+## Plot residuals
+
+```{r}
+# Plot residuals
+res_df |> 
+  mutate(group = str_to_title(group)) |> 
+  ggplot(aes(sample = res)) +
+  stat_qq(size = 0.75, shape = 21, fill = NA) +
+  facet_grid(model ~ group) +
+  stat_qq_line() +
+  labs(y = "Sample Quantiles", x = "Theoretical Quantiles") +
+  theme(aspect.ratio = 1)
+
+ggsave(paste0(home, "/figures/supp/qq_relative_prey_weight.pdf"), width = 17, height = 17, units = "cm")
+```
+
+## Plot coefficients
+
+```{r}
+coef_df$term %>% unique()
+
+pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
+
+# Fix some names
+coef_df2 <- coef_df %>%
+  filter(!grepl('year', term)) %>%
+  filter(!grepl('quarter', term)) %>%
+  mutate(term = str_remove_all(term, "_sc"),
+         term = str_remove_all(term, "density"),
+         term = str_replace_all(term, "_", ""),
+         term = str_replace_all(term, "llco", "ll co"),
+         term = str_replace(term, ":", " × "),
+         term = str_to_sentence(term),
+         group = str_to_sentence(group))
+
+# Plot
+# Alternatively, we can make the full plot with empty spaces, in which case we replace: 
+# geom_stripped_rows(aes(estimate, term), inherit.aes = FALSE) +
+# ggh4x::facet_grid2(model ~ ., scales = "free") +
+# 
+# with: facet_wrap(~model, ncol = 1) +
+# ggplot(coef_df2, aes(estimate, term, color = group, alpha = sig)) +
+#   geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
+#   ggh4x::facet_grid2(model ~ ., scales = "free") +
+#   geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+#   geom_point(position = position_dodge(width = 0.5), size = 1.5) +
+#   geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
+#                 position = position_dodge(width = 0.5)) +
+#   scale_alpha_manual(values = c(0.4, 1)) +
+#   scale_color_manual(values = pal) +
+#   labs(x = "", y = "Standardized coefficient", alpha = "95% CI crossing 0", color = "Group") +
+#   guides(color = guide_legend(title.position = "top", title.hjust = 0.5),
+#          alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
+#   theme(legend.position = "bottom",
+#         legend.direction = "vertical",
+#         legend.box.spacing = unit(-3, "pt"),
+#         legend.margin = margin(0, 0, 0, 0)) +
+#   NULL
+# 
+# ggsave(paste0(home, "/figures/coefs.pdf"), width = 11, height = 21, units = "cm")
+
+# 
+ggplot(coef_df2, aes(estimate, term, color = group, alpha = sig)) +
+  geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
+  facet_wrap2(~model, ncol = 2, scales = "free") +
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+  geom_point(position = position_dodge(width = 0.5), size = 1.5) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
+                position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  scale_color_manual(values = pal) +
+  labs(x = "", y = "Standardized coefficient", alpha = "95% CI crossing 0", color = "Group") +
+  guides(color = guide_legend(title.position = "top", title.hjust = 0.5),
+         alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
+  theme(legend.position = c(0.75, 0.2),
+        legend.direction = "vertical",
+        legend.box.spacing = unit(-3, "pt"),
+        legend.margin = margin(0, 0, 0, 0)) +
+  NULL
+
+ggsave(paste0(home, "/figures/coefs.pdf"), width = 17, height = 13, units = "cm")
+```
+
+## Plot year and quarter coefficients
+
+```{r}
+# Fix some names
+coef_df3 <- coef_df %>%
+  filter(grepl('year', term)) %>%
+  mutate(term = str_remove_all(term, "fyear"),
+         group = str_to_sentence(group),
+         term = as.numeric(term))
+
+# Plot
+# Alternatively, we can make the full plot with empty spaces, in which case we replace: 
+# geom_stripped_rows(aes(estimate, term), inherit.aes = FALSE) +
+# ggh4x::facet_grid2(model ~ ., scales = "free") +
+# 
+# with: facet_wrap(~model, ncol = 1) +
+
+ggplot(coef_df3, aes(term, estimate, color = group, fill = group)) +
+  facet_wrap(~model, scales = "free", ncol = 1) +
+  geom_line(position = position_dodge(width = 0.5)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2, color = NA) +
+  scale_color_manual(values = pal) +
+  scale_fill_manual(values = pal) +
+  labs(x = "Year", y = "Standardized coefficient", color = "") +
+  guides(color = guide_legend(title.position = "top", title.hjust = 0.5, ncol = 3),
+         fill = "none") +
+  theme(legend.position = c(0.5, 0.99),
+        legend.direction = "vertical",
+        legend.box.spacing = unit(-3, "pt"),
+        legend.margin = margin(0, 0, 0, 0),
+        strip.text.x.top = element_text(angle = 0, hjust = 0)) +
+  NULL
+
+ggsave(paste0(home, "/figures/supp/coefs_year.pdf"), width = 11, height = 21, units = "cm")
+
+
+# Now do quarter
+coef_df5 <- coef_df %>%
+  filter(term %in% c("fquarter4")) %>% 
+  mutate(group = str_to_sentence(group))
+
+ggplot(coef_df5, aes(estimate, model, color = group, alpha = sig)) +
+#  ggh4x::facet_grid2(model ~ ., scales = "free") +
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+  geom_point(position = position_dodge(width = 0.5), size = 1.5) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
+                position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  scale_color_manual(values = pal) +
+  labs(x = "", y = "Quarter 4 effect", alpha = "95% CI crossing 0", color = "Group") +
+  guides(color = guide_legend(title.position = "top", title.hjust = 0.5),
+         alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
+  theme(legend.position = "bottom",
+        legend.direction = "horizontal",
+        legend.box = "horizontal",
+        legend.box.spacing = unit(-3, "pt"),
+        legend.margin = margin(0, 0, 0, 0))
+
+ggsave(paste0(home, "/figures/supp/coefs_quarter.pdf"), width = 17, height = 11, units = "cm")
+```
+
+## Conditional effects
+
+```{r}
+# Which CI?
+# https://www.calculator.net/confidence-interval-calculator.html
+pred_df <- bind_rows(pred_cod_df, pred_flounder_df) %>%
+  mutate(group = str_to_sentence(group),
+         sad = ifelse(density_saduria_sc == min(density_saduria_sc), "Low", "High"))
+
+# 75% CI!!
+
+# x small cod for different saduria (y = small cod)
+# x flounder cod for different saduria (y = all)
+
+ggplot(pred_df %>% filter(model == "Saduria" & xvar == "cod" & group == "Small cod"),
+       aes(small_cod_density_sc, exp(est), color = sad, fill = sad)) +
+  geom_ribbon(aes(ymin = exp(est - 1.036*est_se), ymax = exp(est + 1.036*est_se)),
+             alpha = 0.3, color = NA) +
+  geom_line() +
+  coord_cartesian(ylim = c(0, 0.0001)) +
+  facet_wrap(~group, scales = "free") +
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  labs(x = "Small cod density", y = "Relative saduria weight",
+       color = "Saduria", fill = "Saduria") +
+  theme(legend.position = c(0.88, 0.88))
+
+ggsave(paste0(home, "/figures/conditional_saduria_scod.pdf"), width = 11, height = 11, units = "cm")
+
+ggplot(pred_df %>% filter(model == "Saduria" & xvar == "flounder"),
+       aes(flounder_density_sc, exp(est), color = sad, fill = sad)) +
+  geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
+              alpha = 0.3, color = NA) +
+  geom_line() +
+  facet_wrap(~group, scales = "free", ncol = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  labs(x = "Flounder density", y = "Relative saduria weight",
+       color = "Saduria", fill = "Saduria") + 
+  theme(legend.position = c(0.88, 0.94),
+        strip.text.x.top = element_text(angle = 0, hjust = 0))
+
+ggsave(paste0(home, "/figures/conditional_saduria_flounder.pdf"), width = 9, height = 17, units = "cm")
+
+
+# # Saduria conditionals
+# p1 <- ggplot(pred_df %>% filter(model == "Saduria" & xvar == "flounder"),
+#              aes(flounder_density_sc, exp(est), color = sad, fill = sad)) +
+#   geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
+#               alpha = 0.3, color = NA) +
+#   geom_line() +
+#   #coord_cartesian(ylim = c(0, 0.004)) +
+#   facet_wrap(~group, scales = "free") +
+#   scale_color_brewer(palette = "Dark2") +
+#   scale_fill_brewer(palette = "Dark2") +
+#   labs(x = "Flounder density", y = "Relative saduria weight",
+#        color = "Saduria", fill = "Saduria")
+# 
+# p2 <- ggplot(pred_df %>% filter(model == "Saduria" & xvar == "cod"),
+#              aes(small_cod_density_sc, exp(est), color = sad, fill = sad)) +
+#   geom_ribbon(aes(ymin = exp(est - 1.036*est_se), ymax = exp(est + 1.036*est_se)),
+#               alpha = 0.3, color = NA) +
+#   geom_line() +
+#   #coord_cartesian(ylim = c(0, 0.004)) +
+#   facet_wrap(~group, scales = "free") +
+#   scale_color_brewer(palette = "Dark2") +
+#   scale_fill_brewer(palette = "Dark2") +
+#   labs(x = "Small cod density", y = "Relative saduria weight",
+#        color = "Saduria", fill = "Saduria")
+# 
+# p1 / p2 + plot_layout(guides = "collect")
+```
+
+```{r}
+knitr::knit_exit()
+```

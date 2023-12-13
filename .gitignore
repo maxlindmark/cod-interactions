@@ -30,6 +30,12 @@ vignettes/*.pdf
 # Large data files and data we cannot share yet
 data/
 
+# Old text docs
+/text
+
+# Old scripts
+*scrap
+
 # Large model output files
 output/
 

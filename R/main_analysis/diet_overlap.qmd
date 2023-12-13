@@ -1,0 +1,322 @@
+---
+title: "Diet (dis)-similarity"
+author: "Max Lindmark"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 80%
+editor: source
+execute: 
+  echo: true
+  eval: true
+  cache: false
+---
+
+## Load packages
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries, install if needed
+pkgs <- c("tidyverse", "tidylog", "RCurl", "gllvm", "RColorBrewer", "ggrepel", "vegan",
+          "patchwork", "RCurl", "devtools")
+
+if(length(setdiff(pkgs, rownames(installed.packages()))) > 0){
+
+    install.packages(setdiff(pkgs, rownames(installed.packages())), dependencies = T)
+
+}
+
+invisible(lapply(pkgs, library, character.only = T))
+
+# Source map-plot
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+
+# Source code for rotating ordination plot
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/rotate.R")
+
+home <- here::here()
+```
+
+## Read data
+
+```{r read data}
+#| warning=FALSE
+d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
+```
+
+## Ordination using `gllvm`
+
+```{r}
+d2 <- d %>%
+  dplyr::select(ends_with("_tot"))
+
+d2$pred_id <- d$pred_id
+
+d2 <- d2 %>%
+  left_join(d %>% dplyr::select(pred_length_cm, pred_weight_g, pred_id, species), by = "pred_id")
+
+# Calculate relative prey weight and average by size-class
+d3 <- d2 %>% 
+  pivot_longer(ends_with("_tot")) %>% 
+  mutate(value = value/pred_weight_g) %>% 
+  filter(pred_length_cm > 10 & pred_length_cm < 50) %>% # These are the sizes we work with
+  group_by(species, pred_length_cm, name) %>% 
+  summarise(tot_prey_weight = mean(value)) %>%
+  ungroup() %>% 
+  mutate(name = str_replace(name, "_", " "),
+         name = str_replace(name, "_", " "),
+         name = str_remove(name, " tot"),
+         name = str_to_title(name)) %>% 
+  filter(tot_prey_weight < quantile(tot_prey_weight, probs = 0.995))
+
+d_wide <- d3 %>% pivot_wider(names_from = name, values_from = tot_prey_weight)
+
+d_mat <- d_wide %>%
+  dplyr::select(-species, -pred_length_cm) %>%
+  as.matrix()
+
+# Fit gllvm model with two latend variables and no covariates, meaning it becomes an ordination
+set.seed(999)
+
+fit <- gllvm(y = d_mat, family = "tweedie", num.lv = 2)
+
+fit
+
+# Let's do a ggplot-residual instead
+res <- residuals(fit)
+p <- NCOL(fit$y)
+sppind <- 1:p
+ds_res <- res$residuals[, sppind]
+
+# Compare with built-in plot from gllvm: plot(fit, which = 2)
+ds_res %>% 
+  as.data.frame() %>% 
+  pivot_longer(cols = everything()) %>% 
+  ggplot(aes(sample = value)) + 
+  geom_qq(size = 0.8) + 
+  geom_qq_line() + 
+  labs(y = "Sample quantiles",
+       x = "Theoretical quantiles")
+
+ggsave(paste0(home, "/figures/supp/qq_ordi_gllvm.pdf"), width = 11, height = 11, units = "cm")
+
+# Plot with GGplot
+# Now make the ordination plot. We want to use ggplot, so need to hack it a bit
+# See this thread: https://github.com/JenniNiku/gllvm/discussions/116
+# ordiplot(fit, biplot = TRUE)
+
+# Extract site scores
+LVs = as.data.frame(getLV(fit))
+
+# Bind LV site scores to metadata
+# LVs = cbind(LVs, sim.meta)
+# 
+# ordiplot(fittw, biplot = TRUE)
+# 
+# ordiplot(fittw, biplot = TRUE, symbols = TRUE, spp.colors = "white")
+# 
+LVs2 <- rotate(fit)
+
+# text?
+labs <- LVs2$species %>%
+  as.data.frame() %>% 
+  rownames_to_column(var = "prey")
+
+dd <- LVs2$sites %>%
+  as.data.frame() %>% 
+  bind_cols(d_wide %>% dplyr::select(species, pred_length_cm)) %>% 
+  mutate(group = "Flounder",
+         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group))
+
+# Alternative pallettes for the groups
+#pal <- (brewer.pal(n = 8, name = "Dark2")[c(5, 7, 6)])
+#pal <- (brewer.pal(n = 8, name = "Dark2")[c(8, 7, 6)])
+pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
+
+ordi <- ggplot(dd, aes(x = V1, y = V2, color = group, size = pred_length_cm)) +
+  geom_point(alpha = 0.6) + 
+  stat_ellipse(aes(V1, V2, color = group), 
+               inherit.aes = FALSE, linewidth = 1, alpha = 0.3) + 
+  scale_size_continuous(range = c(0.7, 3)) +
+  scale_color_manual(values = pal) +
+  scale_fill_manual(values = pal) + 
+  labs(size = "Predator length", shape = "Species", color = "Group", fill = "Group",
+       x = "Latent variable 1", y = "Latent variable 2") +
+  geom_label_repel(box.padding = 0.75, data = labs, aes(V1, V2, label = prey),
+                  color = "black", inherit.aes = FALSE, size = 2, alpha = 0.4) +
+  theme_sleek() +
+  coord_cartesian(xlim = c(-3, 3), ylim = c(-3, 3.5))
+```
+
+## Make a plot of the ontogenetic development of diets
+
+```{r}
+# Calculate relative prey weight and average by size-class
+d3 <- d2 %>% 
+  pivot_longer(ends_with("_tot")) %>% 
+  mutate(value = value/pred_weight_g) %>% 
+  group_by(species, pred_length_cm, name) %>% 
+  summarise(tot_prey_weight = mean(value)) %>%
+  ungroup() %>% 
+  mutate(name = str_replace(name, "_", " "),
+         name = str_replace(name, "_", " "),
+         name = str_remove(name, " tot"),
+         name = str_to_title(name)) %>% 
+  filter(tot_prey_weight < quantile(tot_prey_weight, probs = 0.995))
+
+max_size_cod <- 65
+
+cod_important_prey <- d3 %>%
+  filter(species == "Cod") %>% 
+  mutate(pred_length_cm2 = ifelse(pred_length_cm > max_size_cod, max_size_cod -1, pred_length_cm)) %>% 
+  mutate(predator_length_grp = cut(pred_length_cm2, breaks = seq(0, 100, by = 5))) %>% 
+  group_by(name, predator_length_grp) %>%
+  summarise(prey_group_tot = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(predator_length_grp) %>% 
+  mutate(prop = prey_group_tot / sum(prey_group_tot)) %>% 
+  ungroup() %>%
+  mutate(max_size = as.numeric(substr(predator_length_grp, 5, 6)),
+         max_size = ifelse(predator_length_grp == "(0,5]", 5, max_size),
+         max_size = ifelse(predator_length_grp == "(5,10]", 10, max_size),
+         predator = "Cod")
+
+max_size_fle <- 40
+
+fle_important_prey <- d3 %>%
+  filter(species == "Flounder") %>% 
+  mutate(pred_length_cm2 = ifelse(pred_length_cm > max_size_fle, max_size_fle-1, pred_length_cm)) %>% 
+  mutate(predator_length_grp = cut(pred_length_cm2, breaks = seq(0, 100, by = 5))) %>% 
+  group_by(name, predator_length_grp) %>%
+  summarise(prey_group_tot = sum(tot_prey_weight)) %>% 
+  ungroup() %>% 
+  group_by(predator_length_grp) %>% 
+  mutate(prop = prey_group_tot / sum(prey_group_tot)) %>% 
+  ungroup() %>%
+  mutate(max_size = as.numeric(substr(predator_length_grp, 5, 6)),
+         max_size = ifelse(predator_length_grp == "(0,5]", 5, max_size),
+         max_size = ifelse(predator_length_grp == "(5,10]", 10, max_size),
+         predator = "Flounder")
+
+area_plot <- bind_rows(fle_important_prey, cod_important_prey) %>% 
+  mutate(prop = replace_na(prop, 0))
+
+n_cat <- nrow(area_plot %>% distinct(name))
+colourCount <- n_cat
+getPalette <- colorRampPalette(brewer.pal(12, "Paired"))
+pal2 <- getPalette(colourCount)
+
+area_plot %>% distinct(name)
+
+# Dataframes for geom_text with sample size
+n_cod <- d2 %>%
+  mutate(pred_length_cm2 = ifelse(pred_length_cm > max_size_cod, max_size_cod -1, pred_length_cm)) %>% 
+  mutate(predator_length_grp = cut(pred_length_cm2, breaks = seq(0, 100, by = 5))) %>% 
+  group_by(predator_length_grp) %>%
+  summarise(n = length(unique(pred_id)))
+
+n_fle <- d2 %>%
+  mutate(pred_length_cm2 = ifelse(pred_length_cm > max_size_fle, max_size_fle-1, pred_length_cm)) %>% 
+  mutate(predator_length_grp = cut(pred_length_cm2, breaks = seq(0, 100, by = 5))) %>% 
+  group_by(predator_length_grp) %>%
+  summarise(n = length(unique(pred_id)))
+
+n_dat <- bind_rows(n_cod %>% mutate(predator = "Cod"), 
+                   n_fle %>% mutate(predator = "Flounder")) %>% 
+  mutate(max_size = as.numeric(substr(predator_length_grp, 5, 6)),
+         max_size = ifelse(predator_length_grp == "(0,5]", 5, max_size),
+         max_size = ifelse(predator_length_grp == "(5,10]", 10, max_size))
+
+bar_diet <- ggplot(data = area_plot, aes(x = max_size, y = prop, fill = name, color = name)) +
+  geom_col(width = 4.3) +
+  geom_text(data = n_dat, aes(x = max_size, y = 1.038, label = n), inherit.aes = FALSE,
+            size = 0, color = "white") +
+  geom_text(data = n_dat, aes(x = max_size, y = 1.02, label = n), inherit.aes = FALSE,
+            size = 1.3) +
+  facet_wrap(~predator, scales = "free") +
+  scale_fill_manual(values = pal2, name = "") +
+  scale_color_manual(values = pal2, name = "") +
+  coord_cartesian(expand = 0) +
+  scale_x_continuous(breaks = seq(0, 100, 5)) +
+  labs(y = "Proportion", x = "Max. predator size in group [cm]") +
+  theme(legend.key.size = unit(0.2, 'cm'))
+```
+
+## Combine plots
+
+```{r}
+bar_diet / ordi + plot_annotation(tag_levels = "A") + plot_layout(heights = c(1, 1.6))
+
+ggsave(paste0(home, "/figures/ordi_diet.pdf"), width = 17, height = 17, units = "cm")
+```
+
+## `nmds`?
+
+```{r nmds ordination}
+# Remove empty stomachs
+# 
+# d_mat2 <- d_mat %>%
+#   # remove empty stomachs?
+#   as.data.frame() %>% 
+#   mutate(sum = rowSums() %>%
+#   filter(sum > 0) %>%
+#   dplyr::select(-sum) %>% 
+#   mutate(id = 1:n())
+# 
+# 
+# mds <- metaMDS(d_mat)
+# 
+# plot(mds)
+# 
+# stressplot(mds)
+# 
+# meta <- scores(mds)$sites %>% 
+#   as_tibble(rownames = "id") %>% 
+#   inner_join(wide_non_zero_stom %>%
+#                dplyr::select(species, pred_length_cm, id) %>% 
+#                mutate(id = as.character(id)), by = "id") %>% 
+#   mutate(group = "Flounder",
+#          group = ifelse(species == "Cod" & pred_length_cm <  25, "Small cod", group),
+#          group = ifelse(species == "Cod" & pred_length_cm >= 25, "Large cod", group))
+# 
+# centroids <- meta %>% 
+#   group_by(group) %>% 
+#   summarise(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+# 
+# # https://chrischizinski.github.io/rstats/vegan-ggplot2/
+# species.scores <- as.data.frame(scores(mds, "species"))  #Using the scores function from vegan to extract the species scores and convert to a data.frame
+# species.scores$species <- rownames(species.scores)  # create a column of species, from the rownames of species.scores
+# 
+# species.scores <- species.scores %>% 
+#   filter(!species == "id") %>% 
+#   mutate(species = str_replace(species, "_", " "),
+#          species = str_replace(species, "_", " "),
+#          species = str_remove(species, " tot"),
+#          species = str_to_title(species))
+#   
+# meta %>% 
+#   ggplot(aes(NMDS1, NMDS2, shape = species, color = group, size = pred_length_cm)) + 
+#   scale_size_continuous(range = c(2, 6)) +
+#   stat_ellipse(aes(NMDS1, NMDS2, color = factor(group, levels = c("Small cod", "Large cod", "Flounder"))), 
+#                inherit.aes = FALSE, linewidth = 1.2, alpha = 0.5) +
+#   geom_point(alpha = 0.8) +
+#   geom_point(data = centroids, aes(NMDS1, NMDS2, shape = species,
+#                                    color = factor(group, levels = c("Small cod", "Large cod", "Flounder")),
+#                                    fill = factor(group, levels = c("Small cod", "Large cod", "Flounder"))), 
+#              shape = 21, size = 4, color = "grey20", stroke = 1.2, inherit.aes = FALSE) + 
+#   scale_color_brewer(palette = "Paired", name = "") +
+#   scale_fill_brewer(palette = "Paired", name = "") + 
+#   labs(size = "Predator length", shape = "Species") +
+#   geom_text_repel(box.padding = 0.5, data = species.scores, aes(x = NMDS1, y = NMDS2, label = species), color = "gray40",
+#             inherit.aes = FALSE, size = 3) +
+#   theme_sleek() +
+#   NULL
+```

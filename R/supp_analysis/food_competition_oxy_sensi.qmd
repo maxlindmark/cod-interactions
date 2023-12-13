@@ -1,0 +1,246 @@
+---
+title: "Food competition analysis: oxygen sensitivity"
+author: "Max Lindmark"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 80%
+editor: source
+execute: 
+  echo: true
+  eval: true
+  cache: false
+---
+
+## Load packages
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries, install if needed
+pkgs <- c("tidyverse", "tidylog", "RCurl", "sdmTMB", "RColorBrewer", "RCurl", "devtools",
+          "patchwork")
+
+if(length(setdiff(pkgs, rownames(installed.packages()))) > 0){
+
+    install.packages(setdiff(pkgs, rownames(installed.packages())), dependencies = T)
+
+}
+
+invisible(lapply(pkgs, library, character.only = T))
+
+library(sdmTMBextra)
+
+# Source map-plot
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+
+home <- here::here()
+```
+
+## Read data & prepare data
+
+```{r read data}
+#| warning: false
+
+d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
+
+# Join in the CTD oxygen data
+ctd <- read_csv(paste0(home, "/data/clean/ctd_trawl_joined.csv")) %>% 
+  rename(oxygen_ctd = oxy) %>% 
+  dplyr::select(oxygen_ctd, haul_id)
+
+d <- d %>% left_join(ctd, by = "haul_id")
+
+# Calculate relative prey weights (saduria and benthos)
+d <- d %>% 
+  drop_na(group) %>% 
+  drop_na(oxy) %>%
+  drop_na(oxygen_ctd) %>% 
+  rename(oxygen = oxy) %>% 
+  mutate(tot_weight = rowSums(select(., ends_with('_tot'))),  
+         benthic_weight = amphipoda_tot + bivalvia_tot + gadus_morhua_tot +
+           gobiidae_tot + mysidae_tot + non_bio_tot + 
+           other_crustacea_tot + other_tot + other_pisces_tot + platichthys_flesus_tot +
+           polychaeta_tot + saduria_entomon_tot) %>% 
+  rename(saduria_weight = saduria_entomon_tot,
+         flounder_density = fle_kg_km2,
+         large_cod_density = mcod_kg_km2,
+         small_cod_density = scod_kg_km2) %>% 
+  mutate(tot_rel_weight = tot_weight / (pred_weight_g - tot_weight), 
+         benthic_rel_weight = benthic_weight / (pred_weight_g - tot_weight),
+         saduria_rel_weight = saduria_weight / (pred_weight_g - tot_weight)) %>% 
+  dplyr::select(-ends_with("_tot")) %>% 
+  dplyr::select(-predator_latin_name, date) %>% 
+  # scale variables
+  mutate(fyear = as.factor(year),
+         fquarter = as.factor(quarter),
+         fhaul_id = as.factor(haul_id),
+         depth_sc = as.numeric(scale(depth)),
+         oxygen_sc = as.numeric(scale(oxygen)),
+         oxygen_ctd_sc = as.numeric(scale(oxygen_ctd)),
+         density_saduria_sc = as.numeric(scale(density_saduria)),
+         flounder_density_sc = as.numeric(scale(flounder_density)),
+         large_cod_density_sc = as.numeric(scale(large_cod_density)),
+         small_cod_density_sc = as.numeric(scale(small_cod_density)))
+
+# Compare oxygen
+ggplot(d, aes(oxygen, oxygen_ctd)) +
+  geom_point() +
+  geom_abline()
+
+```
+
+## Main models
+
+```{r}
+coef_sad <- list()
+coef_sad_ctd <- list()
+coef_ben <- list()
+coef_ben_ctd <- list()
+
+for(i in unique(d$group)) {
+  
+  dd <- filter(d, group == i)
+  
+  mesh <- make_mesh(dd,
+                    xy_cols = c("X", "Y"),
+                    cutoff = 15)
+
+  ggplot() +
+    inlabru::gg(mesh$mesh) +
+    coord_fixed() +
+    geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
+    annotate("text", -Inf, Inf, label = paste("n knots =", mesh$mesh$n), hjust = -0.3, vjust = 3) + 
+    labs(x = "Easting (km)", y = "Northing (km)")
+  
+  
+  
+  # Saduria model
+  m_sad <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
+                    small_cod_density_sc*density_saduria_sc + 
+                    flounder_density_sc*density_saduria_sc,
+                  data = dd,
+                  mesh = mesh,
+                  family = tweedie(),
+                  spatiotemporal = "IID", 
+                  spatial = "off",
+                  time = "year")
+  
+  
+  m_sad_ctd <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_ctd_sc + #(1|fhaul_id) +
+                        small_cod_density_sc*density_saduria_sc + 
+                        flounder_density_sc*density_saduria_sc,
+                      data = dd,
+                      mesh = mesh,
+                      family = tweedie(),
+                      spatiotemporal = "IID", 
+                      spatial = "off",
+                      time = "year")
+  
+
+  # Benthic model
+  m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                    small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                  data = dd,
+                  mesh = mesh,
+                  family = tweedie(),
+                  spatiotemporal = "IID", 
+                  spatial = "off",
+                  time = "year")
+  
+  m_ben_ctd <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                        small_cod_density_sc*oxygen_ctd_sc + flounder_density_sc*oxygen_ctd_sc,
+                      data = dd,
+                      mesh = mesh,
+                      family = tweedie(),
+                      spatiotemporal = "IID", 
+                      spatial = "off",
+                      time = "year")
+  
+  
+  # Coefficients
+  coefs_sad <- bind_rows(tidy(m_sad, effects = "fixed", conf.int = TRUE)) %>% 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coefs_sad_ctd <- bind_rows(tidy(m_sad_ctd, effects = "fixed", conf.int = TRUE)) %>% 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coefs_ben <- bind_rows(tidy(m_ben, effects = "fixed", conf.int = TRUE)) %>% 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coefs_ben_ctd <- bind_rows(tidy(m_ben_ctd, effects = "fixed", conf.int = TRUE)) %>% 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coef_sad[[i]] <- coefs_sad %>% mutate(group = i)
+  coef_sad_ctd[[i]] <- coefs_sad_ctd %>% mutate(group = i)
+  coef_ben[[i]] <- coefs_ben %>% mutate(group = i)
+  coef_ben_ctd[[i]] <- coefs_ben_ctd %>% mutate(group = i)
+
+}
+```
+
+## Make dataframes
+
+```{r}
+coef_df <- bind_rows(bind_rows(coef_sad) %>% mutate(model = "Saduria", oxy_source = "model"),
+                     bind_rows(coef_sad_ctd) %>% mutate(model = "Saduria", oxy_source = "ctd"),
+                     bind_rows(coef_ben) %>% mutate(model = "Benthos", oxy_source = "model"),
+                     bind_rows(coef_ben_ctd) %>% mutate(model = "Benthos", oxy_source = "ctd"))
+```
+
+## Plot coefficients
+
+```{r}
+pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
+
+coef_df %>%
+  filter(!grepl('year', term)) %>%
+  filter(!grepl('quarter', term)) %>%
+  mutate(term = str_remove_all(term, "_sc"),
+         term = str_remove_all(term, "density"),
+         term = str_replace_all(term, "_", " "),
+         term = str_replace(term, ":", "×"),
+         term = str_to_sentence(term),
+         group = str_to_sentence(group)) %>% 
+  mutate(term = ifelse(term == "Oxygen ctd", "Oxygen", term),
+         term = ifelse(term == "Small cod ×oxygen ctd", "Small cod × oxygen", term),
+         term = ifelse(term == "Oxygen ctd×flounder ", "Oxygen × flounder", term),
+         term = ifelse(term == "Oxygen×flounder ", "Oxygen × flounder", term),
+         term = ifelse(term == " Saduria×flounder ", "Saduria × flounder", term),
+         term = ifelse(term == "Small cod ×oxygen", "Small cod × oxygen", term)) %>% 
+  ggplot(aes(term, estimate, color = group, alpha = sig, shape = oxy_source)) +
+  facet_wrap(~ model, ncol = 1) + 
+  geom_hline(yintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+  geom_point(position = position_dodge(width = 0.5), size = 2) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0,
+                position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c(0.4, 1)) +
+  scale_color_manual(values = pal) +
+  labs(x = "", y = "Standardized coefficient", alpha = "95% CI crossing 0", color = "Group", shape = "Oxygen source") +
+  theme(legend.position = "bottom", 
+        legend.direction = "vertical") +
+  guides(color = guide_legend(title.position = "top", title.hjust = 0.5),
+         alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
+  coord_flip() +
+  NULL
+
+ggsave(paste0(home, "/figures/supp/coefs_oxy_sens.pdf"), width = 14, height = 25, units = "cm")
+```

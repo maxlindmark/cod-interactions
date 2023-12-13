@@ -1,0 +1,608 @@
+---
+title: "Summarise stomach content data"
+author: "Max Lindmark"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 80%
+editor: source
+execute: 
+  echo: true
+  eval: true
+  cache: false
+---
+
+## Load packages
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries, install if needed
+pkgs <- c("tidyverse", "tidylog", "RCurl", "janitor", "terra", "viridis", "devtools", "ncdf4", "chron", "raster")
+
+if(length(setdiff(pkgs, rownames(installed.packages()))) > 0){
+
+    install.packages(setdiff(pkgs, rownames(installed.packages())), dependencies = T)
+
+}
+
+invisible(lapply(pkgs, library, character.only = T))
+
+# Source code for map plots
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+
+home <- here::here()
+```
+
+## Read data
+
+```{r read data}
+#| warning: false
+
+d <- read_csv(paste0(home, "/data/clean/full_stomach_data.csv"))
+```
+
+## Summarize and organize data
+We want 1 row = 1 predator and the total weight for each present prey type
+
+```{r summarize data}
+#| message: false
+#| warning: false
+
+# Calculate total weight of prey by predator ID and prey species (i.e., across prey sizes). First create wide data frame so that I can sum easily across prey groups (columns)
+d_wide <- d %>% 
+  group_by(pred_id, prey_latin_name) %>% 
+  summarise(tot_prey_weight_g = sum(prey_weight_g)) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = prey_latin_name, values_from = tot_prey_weight_g) %>% 
+  mutate_all(~ifelse(is.na(.), 0, .)) %>% 
+  clean_names()
+  
+# Now make some calculations and aggregate to some taxonomic level. Since all columns are assigned to some higher level group (or the same group), the sum of these is the total stomach content. Note that I have one group for unidentified clupeids, but also sprat and herring. So if I want the total of some aggregated group, then I need to add all the sub-groups.
+
+sort(colnames(d_wide %>% dplyr::select(-pred_id)))
+
+d_wide2 <- d_wide %>% 
+  mutate(amphipoda_tot = gammarus_sp + monoporeia_affinis + amphipoda + hyperia_galba,
+         bivalvia_tot =  bivalvia + mytilus_sp + mytilus_sp_2 + mya_arenaria + macoma_balthica + 
+             mytilus_edulis + limecola_balthica + limecola_balthica_2,
+         clupeidae_tot = clupeidae + clupeidae_2,
+         clupea_harengus_tot = clupea_harengus + clupea_harengus_2,
+         gadus_morhua_tot = gadus_morhua,
+         gobiidae_tot = gobiidae + gobiidae_2 + gobius_niger + neogobius_melanostomus + aphia_minuta,
+         mysidae_tot = mysidae + neomysis_integer + mysis_mixta + mysida + gastrosacus,
+         non_bio_tot = stone + stone_2 + plastic + plastics + sand + wood + carbon + carbon_2 + wood_2 + 
+             litter_plastics + sand_2,
+         other_crustacea_tot = pontoporeia_femorata + pontoporeia_femotara + crangon + 
+             crangon_crangon + idotea_balthica + cumacea + idotea_sp +
+             praunus_flexuosus + crustacea + diastylis_rathkei + palaemon_sp + palaemon_elegans + caridea +
+             copepoda + pontoporeiidae + decapoda + pontoporeidae, 
+         other_tot = halicryptus_spinulosus + halicryptus_spinulosus_2 + priapulus + priapulus_caudatus + priapulus_caudatus_2 + algae + aglae + 
+             waste + remains + remains_2 + hydrobia_sp + 
+             priapulida + halicryptus + digestive_tract + mucus + mucus_2 + 
+             halicryptus_spinolusus + priapulida_2 + prapulida,
+         other_pisces_tot = pisces + pisces_2 + enchelyopus_cimbrius + engraulis_encrasicolus +
+             gasterosteus_aculeatus + scales + scales_2 + scomber_scombrus +
+             pungitius_pungitius + zoarces_viviparus + ammodytidae +
+             pleuronectidae + gasterosteidae + agonus_cataphractus + myoxocephalus_scorpius,
+         platichthys_flesus_tot = platichthys_flesus,
+         polychaeta_tot = bylgides_sarsi + scoloplos_armiger + hediste_diversicolor +
+             phyllodocida + polychaeta + pectinaria_sp + nephtys_ciliata,
+         saduria_entomon_tot = saduria_entomon,
+         sprattus_sprattus_tot = sprattus_sprattus + sprattus_sprattus_2
+         )
+
+# Check it's correct! The sum of all groups should be the sum of all categories
+colnames(d_wide2 %>% dplyr::select(-pred_id))
+
+t <- d_wide2 %>%
+  dplyr::select(-pred_id) %>% 
+  mutate(all_cat_sum = rowSums(.[1:100]),
+         group_sum = rowSums(.[101:115])) %>% 
+  dplyr::select(all_cat_sum, group_sum) %>%
+  filter(!all_cat_sum == group_sum)  
+
+# Must be some rounding error...
+d_wide2 %>%
+  dplyr::select(-pred_id) %>% 
+  mutate(all_cat_sum = rowSums(.[1:100]),
+         group_sum = rowSums(.[101:115])) %>% 
+  dplyr::select(all_cat_sum, group_sum) %>%
+  ggplot(aes(all_cat_sum, group_sum)) +
+  geom_point() +
+  geom_abline(color = "red")
+
+# Select only columns aggregated columns (ending with _tot) (all columns (prey) are represented there)
+colnames(d_wide2)
+
+d_wide3 <- d_wide2 %>%
+  dplyr::select(pred_id, ends_with("_tot"))
+
+# Add back in other information about the predator ID
+d_sel <- d %>%
+  dplyr::select(predator_latin_name, species, pred_weight_g, pred_length_cm,
+                year, quarter, month, ices_rect, subdiv, haul_id, smhi_serial_no,
+                X, Y, lat, lon, pred_id, fle_kg_km2, mcod_kg_km2, scod_kg_km2, date,
+                bottom_depth
+                ) %>% 
+  distinct(pred_id, .keep_all = TRUE)
+
+d_wide3 <- left_join(d_wide3, d_sel)
+
+# mutate(size_group = ifelse(lengthcl >= 100 & lengthcl < 250, "small", NA),
+#        size_group = ifelse(lengthcl >= 250 & lengthcl < 500, "medium", size_group)) %>% 
+
+d_wide3 <- d_wide3 %>%
+  mutate(group = NA,
+         group = ifelse(species == "Flounder", "flounder", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 10 & pred_length_cm <= 25, "small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm > 25 & pred_length_cm <= 50, "large cod", group))
+```
+
+## Add covariates
+
+Depth
+
+```{r}
+dep_raster <- terra::rast(paste0(home, "/data/Mean depth natural colour (with land).nc"))
+class(dep_raster)
+crs(dep_raster, proj = TRUE)
+
+plot(dep_raster)
+
+d_wide3$depth <- terra::extract(dep_raster, d_wide3 %>% dplyr::select(lon, lat))$elevation
+
+ggplot(d_wide3, aes(lon, lat, color = depth*-1)) + 
+  geom_point()
+
+d_wide3$depth <- d_wide3$depth*-1
+
+d_wide3 <- d_wide3 |> drop_na(depth)
+
+plot_map + 
+  geom_point(data = d_wide3, aes(X*1000, Y*1000, color = depth)) + 
+  scale_color_viridis()
+
+ggplot(d_wide3, aes(depth, bottom_depth)) + 
+  geom_point() + 
+  geom_abline()
+
+# So strange. What does it look like in the normal data?
+t <- d_wide3 %>% 
+  filter(bottom_depth > 250)
+  
+ggplot(t, aes(depth, bottom_depth/10)) + 
+  geom_point() + 
+  geom_abline()
+
+strange_dept <- d %>% filter(haul_id %in% c(t$haul_id))
+
+strange_dept %>% 
+  summary()
+
+unique(strange_dept$quarter)
+unique(strange_dept$year)
+unique(strange_dept$month)
+unique(strange_dept$subdiv)
+```
+
+## Add in environmental variables
+
+```{r}
+dat <- d_wide3 %>% 
+  dplyr::select(haul_id, X, Y, lon, lat, year, month, quarter) %>% 
+  distinct(haul_id, .keep_all = TRUE) %>% 
+  mutate(month = ifelse(quarter == 1, 2, 11), # most common months
+         month_year = paste(month, year, sep = "_"))
+
+dat %>% head()
+
+# For temperature and oxygen, we need to use two different rasters because we don't have the updated data in the re-analyisis
+# TODO: check this later
+dat_1 <- dat %>% filter(year < 2022)
+dat_2 <- dat %>% filter(year >= 2022)
+```
+
+### Saduria
+
+```{r}
+saduria <- terra::rast(paste0(home, "/data/saduria-tif/FWBiomassm_raster_19812019presHighweightcor_no0_newZi.tif"))
+
+WGS84 <- "+proj=longlat +datum=WGS84"
+
+saduria_latlon <- terra::project(saduria, WGS84)
+
+density_saduria <- terra::extract(saduria_latlon, dat %>% dplyr::select(lon, lat))
+
+dat$density_saduria <- density_saduria$FWBiomassm_raster_19812019presHighweightcor_no0_newZi
+
+plot_map + 
+  geom_point(data = dat, aes(X*1000, Y*1000, color = density_saduria)) +
+  scale_color_viridis(trans = "sqrt", name = "Saduria biomass density")
+```
+
+### Oxygen
+
+```{r oxygen}
+# Downloaded from here: https://data.marine.copernicus.eu/products
+# Extract raster points: https://gisday.wordpress.com/2014/03/24/extract-raster-values-from-points-using-r/comment-page-1/
+# https://rpubs.com/boyerag/297592
+# https://pjbartlein.github.io/REarthSysSci/netCDF.html#get-a-variable
+# Open the netCDF file
+ncin <- nc_open(paste0(home, "/data/NEMO/cmems_mod_bal_bgc_my_P1D-m_1702039771395.nc"))
+
+print(ncin)
+
+# Get longitude and latitude
+lon <- ncvar_get(ncin,"lon")
+nlon <- dim(lon)
+head(lon)
+
+lat <- ncvar_get(ncin,"lat")
+nlat <- dim(lat)
+head(lat)
+
+# Get time
+time <- ncvar_get(ncin,"time")
+time
+
+tunits <- ncatt_get(ncin,"time","units")
+nt <- dim(time)
+nt
+tunits
+
+# Get oxygen
+dname <- "o2b"
+
+oxy_array <- ncvar_get(ncin,dname)
+dlname <- ncatt_get(ncin,dname,"long_name")
+dunits <- ncatt_get(ncin,dname,"units")
+fillvalue <- ncatt_get(ncin,dname,"_FillValue")
+dim(oxy_array)
+
+# Get global attributes
+title <- ncatt_get(ncin,0,"title")
+institution <- ncatt_get(ncin,0,"institution")
+datasource <- ncatt_get(ncin,0,"source")
+references <- ncatt_get(ncin,0,"references")
+history <- ncatt_get(ncin,0,"history")
+Conventions <- ncatt_get(ncin,0,"Conventions")
+
+# Convert time: split the time units string into fields
+tustr <- strsplit(tunits$value, " ")
+tdstr <- strsplit(unlist(tustr)[3], "-")
+tmonth <- as.integer(unlist(tdstr)[2])
+tday <- as.integer(unlist(tdstr)[3])
+tyear <- as.integer(unlist(tdstr)[1])
+
+# Here I deviate from the guide a little bit. Save this info:
+dates <- chron(time, origin = c(tmonth, tday, tyear))
+
+# Crop the date variable
+months <- as.numeric(substr(dates, 2, 3))
+years <- as.numeric(substr(dates, 8, 9))
+years <- ifelse(years > 90, 1900 + years, 2000 + years)
+
+# Replace netCDF fill values with NA's
+oxy_array[oxy_array == fillvalue$value] <- NA
+
+dim(oxy_array)
+str(dim(oxy_array))
+# The third slot is the date index
+
+# Loop through all "dates", put into a list 
+dlist <- list()
+
+for(i in 1:length(months)) {
+  
+  oxy_sub <- oxy_array[, , i]
+    
+  dlist[[i]] <- oxy_sub
+  
+}
+
+# Name the list
+names(dlist) <- paste(months, years, sep = "_")
+str(dlist)
+
+# Create data holding object
+oxy_data_list <- list()
+
+# Loop through each month_year and extract raster values for the cpue data points
+for(i in unique(dat_1$month_year)) {
+  
+  # Set plot limits
+  ymin = 54; ymax = 58; xmin = 12; xmax = 22
+
+  # Subset a month-year combination
+  oxy_slice <- dlist[[i]]
+  
+  # Create raster for that year (i)
+  r <- raster(t(oxy_slice), xmn = min(lon), xmx = max(lon), ymn = min(lat), ymx = max(lat),
+              crs = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+  
+  # Flip...
+  r <- flip(r, direction = 'y')
+  
+  plot(r, main = paste(i), ylim = c(ymin, ymax), xlim = c(xmin, xmax))
+
+  # Filter the same year (i) in the cpue data and select only coordinates
+  d_slice <- dat_1 %>% filter(month_year == i) %>% dplyr::select(lon, lat)
+  
+  # Make into a SpatialPoints object
+  data_sp <- SpatialPoints(d_slice)
+  
+  # Extract raster value (oxygen)
+  rasValue <- raster::extract(r, data_sp)
+  
+  # Now we want to plot the results of the raster extractions by plotting the cpue data points over a raster and saving it for each year.
+  # Make the SpatialPoints object into a raster again (for plot)
+  df <- as.data.frame(data_sp)
+  
+  # Add in the raster value in the df holding the coordinates for the cpue data
+  d_slice$oxy <- rasValue
+  
+  # Add in which year
+  d_slice$month_year <- i
+
+  # Now the unit of oxygen is mmol/m3. I want it to be ml/L. The original model is in unit ml/L
+  # and it's been converted by the data host. Since it was converted without accounting for
+  # pressure or temperature, I can simply use the following conversion factor:
+  # 1 ml/l = 103/22.391 = 44.661 μmol/l -> 1 ml/l = 0.044661 mmol/l = 44.661 mmol/m^3 -> 0.0223909 ml/l = 1mmol/m^3
+  # https://ocean.ices.dk/tools/unitconversion.aspx
+
+  d_slice$oxy <- d_slice$oxy * 0.0223909
+    
+  # Add each years' data in the list
+  oxy_data_list[[i]] <- d_slice
+
+}
+
+# Now create a data frame from the list of all annual values
+big_dat_oxy <- dplyr::bind_rows(oxy_data_list)
+
+sort(unique(big_dat_oxy$month_year))
+```
+
+### New oxygen
+
+```{r}
+# 2022 Q1
+# Note this is from the projection, not the re-analysis because it hasn't been updated
+ncin <- nc_open(paste0(home, "/data/NEMO/BAL-ERGOM_BGC-MonthlyMeans-202202.nc"))
+
+print(ncin)
+
+# Get longitude and latitude
+lon <- ncvar_get(ncin,"lon")
+nlon <- dim(lon)
+head(lon)
+
+lat <- ncvar_get(ncin,"lat")
+nlat <- dim(lat)
+head(lat)
+
+# Get time
+time <- ncvar_get(ncin,"time")
+time
+
+tunits <- ncatt_get(ncin,"time","units")
+nt <- dim(time)
+nt
+tunits
+
+# Get oxygen
+dname <- "o2b"
+
+oxy_array <- ncvar_get(ncin,dname)
+dlname <- ncatt_get(ncin,dname,"long_name")
+dunits <- ncatt_get(ncin,dname,"units")
+fillvalue <- ncatt_get(ncin,dname,"_FillValue")
+dim(oxy_array)
+
+# Get global attributes
+title <- ncatt_get(ncin,0,"title")
+institution <- ncatt_get(ncin,0,"institution")
+datasource <- ncatt_get(ncin,0,"source")
+references <- ncatt_get(ncin,0,"references")
+history <- ncatt_get(ncin,0,"history")
+Conventions <- ncatt_get(ncin,0,"Conventions")
+
+# Convert time: split the time units string into fields
+tustr <- strsplit(tunits$value, " ")
+tdstr <- strsplit(unlist(tustr)[3], "-")
+tmonth <- as.integer(unlist(tdstr)[2])
+tday <- as.integer(unlist(tdstr)[3])
+tyear <- as.integer(unlist(tdstr)[1])
+
+# Here I deviate from the guide a little bit. Save this info:
+dates <- chron(time, origin = c(tmonth, tday, tyear))
+
+# Crop the date variable
+months <- as.numeric(substr(dates, 2, 3))
+years <- as.numeric(substr(dates, 8, 9))
+years <- ifelse(years > 90, 1900 + years, 2000 + years)
+
+# Replace netCDF fill values with NA's
+oxy_array[oxy_array == fillvalue$value] <- NA
+
+# Create raster for that year (i)
+r <- raster(t(oxy_array), xmn = min(lon), xmx = max(lon), ymn = min(lat), ymx = max(lat),
+            crs = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+  
+# Flip...
+r <- flip(r, direction = 'y')
+  
+plot(r, main = paste("2022_q1"), ylim = c(ymin, ymax), xlim = c(xmin, xmax))
+
+# Filter the same year (i) in the cpue data and select only coordinates
+dat_2_q1 <- dat_2 %>% dplyr::select(lon, lat)
+  
+# Make into a SpatialPoints object
+dat_2_q1_sp <- SpatialPoints(dat_2_q1)
+  
+# Extract raster value (oxygen)
+rasValue <- raster::extract(r, dat_2_q1_sp)
+  
+dat_2_q1$oxy <- rasValue
+  
+# Add in which year
+dat_2_q1$month_year <- "2_2022"
+
+head(dat_2_q1)
+
+dat_2_q1$oxy <- dat_2_q1$oxy * 0.0223909
+    
+hist(dat_2_q1$oxy)
+
+
+
+
+
+
+
+
+# Now do Q4
+ncin <- nc_open(paste0(home, "/data/NEMO/BAL-ERGOM_BGC-MonthlyMeans-202211.nc"))
+
+print(ncin)
+
+# Get longitude and latitude
+lon <- ncvar_get(ncin,"lon")
+nlon <- dim(lon)
+head(lon)
+
+lat <- ncvar_get(ncin,"lat")
+nlat <- dim(lat)
+head(lat)
+
+# Get time
+time <- ncvar_get(ncin,"time")
+time
+
+tunits <- ncatt_get(ncin,"time","units")
+nt <- dim(time)
+nt
+tunits
+
+# Get oxygen
+dname <- "o2b"
+
+oxy_array <- ncvar_get(ncin,dname)
+dlname <- ncatt_get(ncin,dname,"long_name")
+dunits <- ncatt_get(ncin,dname,"units")
+fillvalue <- ncatt_get(ncin,dname,"_FillValue")
+dim(oxy_array)
+
+# Get global attributes
+title <- ncatt_get(ncin,0,"title")
+institution <- ncatt_get(ncin,0,"institution")
+datasource <- ncatt_get(ncin,0,"source")
+references <- ncatt_get(ncin,0,"references")
+history <- ncatt_get(ncin,0,"history")
+Conventions <- ncatt_get(ncin,0,"Conventions")
+
+# Convert time: split the time units string into fields
+tustr <- strsplit(tunits$value, " ")
+tdstr <- strsplit(unlist(tustr)[3], "-")
+tmonth <- as.integer(unlist(tdstr)[2])
+tday <- as.integer(unlist(tdstr)[3])
+tyear <- as.integer(unlist(tdstr)[1])
+
+# Here I deviate from the guide a little bit. Save this info:
+dates <- chron(time, origin = c(tmonth, tday, tyear))
+
+# Crop the date variable
+months <- as.numeric(substr(dates, 2, 3))
+years <- as.numeric(substr(dates, 8, 9))
+years <- ifelse(years > 90, 1900 + years, 2000 + years)
+
+# Replace netCDF fill values with NA's
+oxy_array[oxy_array == fillvalue$value] <- NA
+
+# Create raster for that year (i)
+r <- raster(t(oxy_array), xmn = min(lon), xmx = max(lon), ymn = min(lat), ymx = max(lat),
+            crs = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+  
+# Flip...
+r <- flip(r, direction = 'y')
+  
+plot(r, main = paste("2022_q4"), ylim = c(ymin, ymax), xlim = c(xmin, xmax))
+
+# Filter the same year (i) in the cpue data and select only coordinates
+dat_2_q4 <- dat_2 %>% dplyr::select(lon, lat)
+  
+# Make into a SpatialPoints object
+dat_2_q4_sp <- SpatialPoints(dat_2_q4)
+  
+# Extract raster value (oxygen)
+rasValue <- raster::extract(r, dat_2_q4_sp)
+  
+dat_2_q4$oxy <- rasValue
+  
+# Add in which year
+dat_2_q4$month_year <- "11_2022"
+
+head(dat_2_q4)
+
+dat_2_q4$oxy <- dat_2_q4$oxy * 0.0223909
+    
+hist(dat_2_q4$oxy)
+```
+
+New oxygen
+
+```{r}
+head(dat_2_q1)
+head(dat_2_q4)
+
+hist(dat_2_q1$oxy)
+hist(dat_2_q4$oxy)
+```
+
+### Join with stomach data
+
+```{r}
+d_wide4 <- d_wide3
+
+d_wide4 <- d_wide4 %>% 
+  mutate(month_2 = ifelse(quarter == 1, 2, 11), # most common months
+         month_year = paste(month_2, year, sep = "_")) %>% 
+  dplyr::select(-month_2)
+
+unique(d_wide4$month_year)
+unique(big_dat_oxy$month_year)
+
+# Add saduria
+d_wide4 <- d_wide4 %>% left_join(dat %>% dplyr::select(X, Y, density_saduria), by = c("X", "Y"))
+
+# Add oxygen (bind_rows first)
+head(big_dat_oxy)
+head(dat_2_q1)
+
+oxy_all <- bind_rows(big_dat_oxy, dat_2_q1, dat_2_q4)
+
+ggplot(oxy_all, aes(lon, lat, color = oxy)) + 
+  geom_point() + 
+  facet_wrap(~month_year)
+
+d_wide4 <- d_wide4 %>% left_join(oxy_all, by = c("lon", "lat", "month_year"))
+
+ggplot(d_wide4, aes(lon, lat, color = oxy)) + 
+  geom_point() + 
+  facet_wrap(~month_year)
+
+d_wide4 <- d_wide4 %>% dplyr::select(-month_year)
+```
+
+Save
+
+```{r save}
+write_csv(d_wide4, paste0(home, "/data/clean/aggregated_stomach_data.csv"))
+```

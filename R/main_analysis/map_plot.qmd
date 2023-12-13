@@ -1,0 +1,88 @@
+---
+title: "Make map plot"
+author: "Max Lindmark"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 80%
+editor: source
+execute: 
+  echo: true
+  eval: true
+  cache: false
+---
+
+## Load packages
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries, install if needed
+pkgs <- c("tidyverse", "tidylog", "RCurl", "janitor", "terra", "viridis", "devtools", "RColorBrewer")
+
+if(length(setdiff(pkgs, rownames(installed.packages()))) > 0){
+
+    install.packages(setdiff(pkgs, rownames(installed.packages())), dependencies = T)
+
+}
+
+invisible(lapply(pkgs, library, character.only = T))
+
+# Source code for map plots
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+
+home <- here::here()
+```
+
+## Read data
+
+```{r read data}
+#| warning: false
+
+d <- read_csv(paste0(home, "/data/clean/full_stomach_data.csv"))
+```
+
+## Plot
+
+```{r}
+d2 <- d %>%
+  group_by(haul_id, year) %>% 
+  mutate(n = n()) %>% 
+  distinct(haul_id, .keep_all = TRUE)
+
+pal <- brewer.pal(name = "RdBu", n = length(unique(d2$year)))
+
+plot_map +
+  geom_sf(color = "gray80") + 
+  geom_point(data = d2, aes(X*1000, Y*1000, color = as.factor(year), fill = as.factor(year),
+                            size = n)) + 
+  scale_color_manual(values = alpha(pal, alpha = 0.5)) +
+  scale_radius(range = c(0.5, 2.5)) +
+  theme_sleek(base_size = 9) + 
+  xlim(xmin2*0.83, xmax2*1.13) +
+  ylim(ymin2*0.98, ymax2) + 
+  theme(legend.position = c(0.68, 0.07),
+        legend.direction = "horizontal",
+        legend.box = "horizontal",
+        legend.key.size = unit(0.02, "cm")) +
+  guides(colour = guide_legend(title.position = "top", title.hjust = 0.5),
+         size = guide_legend(title.position = "top", title.hjust = 0.5, ncol = 2)) +
+  labs(shape = "Quarter", color = "Year") + 
+  annotate("text", label = "Sweden", x = xmin2 + 0.15*xrange, y = ymin2 + 0.75*yrange, color = "gray50", size = 2.6) +
+  annotate("text", label = "Denmark", x = xmin2 - 0.14*xrange, y = ymin2 + 0.2*yrange, color = "gray50", size = 2.6, angle = 60) +
+  annotate("text", label = "Germany", x = xmin2 - 0.045*xrange, y = ymin2 - 0.3*yrange, color = "gray50", size = 2.6) +
+  annotate("text", label = "Poland", x = xmin2 + 0.7*xrange, y = ymin2 - 0.12*yrange, color = "gray50", size = 2.6) +
+  annotate("text", label = "Russia", x = xmin2 + 1.18*xrange, y = ymin2 - 0.05*yrange, color = "gray50", size = 2.6) +
+  annotate("text", label = "Lithuania", x = xmin2 + 1.24*xrange, y = ymin2 + 0.28*yrange, color = "gray50", size = 2.6, angle = 75) +
+  annotate("text", label = "Latvia", x = xmin2 + 1.24*xrange, y = ymin2 + 0.55*yrange, color = "gray50", size = 2.6, angle = 75)
+
+ggsave(paste0(home, "/figures/map_plot.pdf"), width = 11, height = 10, units = "cm")
+```
+
+

@@ -1,0 +1,1346 @@
+---
+title: "Join CTD and stomach data"
+subtitle: "*'Tidy datasets are all alike but every messy dataset is messy in its own way'*"
+author: "Max Lindmark"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 80%
+editor: source
+execute: 
+  echo: true
+  eval: true
+  cache: false
+  message: false
+  warning: false
+---
+
+Here I will try and join CTD data to trawl data using the *new* key `smhi_serial_no` that was recently added to the trawl database. Essentially all surveys (quarter 1 and 4 every year) has a different file format. 
+
+## Load packages
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries, install if needed
+pkgs <- c("plyr", "tidyverse", "readxl", "tidylog", "RCurl", "janitor", "patchwork", "devtools", "viridis", "nngeo", "conflicted") 
+
+if(length(setdiff(pkgs, rownames(installed.packages()))) > 0){
+
+    install.packages(setdiff(pkgs, rownames(installed.packages())), dependencies = T)
+  
+}
+
+invisible(lapply(pkgs, library, character.only = T))
+
+# Source code for map plots
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+
+home <- here::here()
+
+# Because I loaded plyr (tidylog uses dplyr)
+conflicts_prefer(tidylog::mutate)
+conflicts_prefer(tidylog::summarise)
+conflicts_prefer(tidylog::filter)
+conflicts_prefer(tidylog::distinct)
+conflicts_prefer(tidylog::group_by)
+conflicts_prefer(tidylog::drop_na)
+conflicts_prefer(tidylog::ungroup)
+conflicts_prefer(tidylog::left_join)
+conflicts_prefer(tidylog::select)
+conflicts_prefer(dplyr::arrange)
+
+# Load coordinate-changing functions
+# Function to change coordinates to something more useful
+format.position <- function(x){
+  sign.x <- sign(x)
+  x <- abs(x)
+  x <- ifelse(nchar(x)==3, paste("0",x,sep=""), x)
+  x <- ifelse(nchar(x)==2, paste("00",x,sep=""), x)
+  x <- ifelse(nchar(x)==1, paste("000",x,sep=""), x)
+  dec.x <- as.numeric(paste(substring(x,1,2)))+as.numeric(paste(substring(x,3,4)))/60
+  dec.x <- sign.x*dec.x
+}
+```
+
+## Load data 
+
+First read the stomach + trawl data. Take the unique haul id because that's all we need
+
+```{r}
+d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv")) %>% 
+  dplyr::select(lon, lat, X, Y, year, quarter, smhi_serial_no, haul_id, bottom_depth) %>% 
+  distinct(haul_id, .keep_all = TRUE) %>% 
+  mutate(q_year = paste(quarter, year, sep = "_"),
+         smhi_serial_no_all = paste(q_year, smhi_serial_no, sep = "_")) %>% 
+  as.data.frame()
+```
+
+Check if there are any NA's in the one key we have to join the data
+
+```{r}
+d %>% 
+  group_by(year, quarter) %>% 
+  summarise(sum_na = sum(is.na(smhi_serial_no))) %>% 
+  as.data.frame()
+```
+
+<span style="color:red;"> Ok, so in addition to all the peculiarities with the data structure (sometimes haul is given in as a name of a tab, sometimes filename, sometimes cell in a non-R friendly ctd output), and the raw CTD data itself, it doesn't look very promising that there are many missing keys in recent data. </span>
+
+![](secrets.png){fig-align="center"}
+
+I will anyway try with an early survey wihout any NA's in the key.
+
+Start with Q4 2015
+
+```{r 15.11}
+# Nov 2015
+setwd(paste0(home, "/data/bits-oxygen/15_11/CTD_SBE911/CNV/for_r/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+filenames
+q4_15 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 385, col_types = "guess") %>% 
+                         dplyr::select(4, 12, 19, 23, 24) %>% 
+                         dplyr::rename(temp = 1,
+                                       oxy = 2,
+                                       depth = 3, 
+                                       lat = 4,
+                                       lon = 5) %>%
+                         mutate(filename = .x))
+
+q4_15 <- q4_15 %>% 
+  mutate(filename = str_remove(filename, ".xlsx")) %>% 
+  mutate(smhi_serial_no = as.numeric(sub(".*\\.(.*)", "\\1", filename))) %>% 
+  dplyr::select(temp, oxy, smhi_serial_no, lat, lon, depth) %>% 
+  dplyr::rename(lat_ctd = lat, 
+                lon_ctd = lon)
+
+# Now see how the unique values for the key ("smhi_serial_no") for trawl data and CTD data
+d %>%
+  filter(year == 2015, quarter == 4) %>%
+  distinct(smhi_serial_no) %>%
+  arrange(smhi_serial_no) %>% 
+  pull()
+
+q4_15 %>%
+  distinct(smhi_serial_no) %>%
+  arrange(smhi_serial_no) %>%
+  pull()
+
+# Explore the data a bit, because we have CTD data for many depths per trawl station
+q4_15 %>% 
+  filter(smhi_serial_no %in% c(unique(filter(d, year == 2015, quarter == 4)$smhi_serial_no))) %>% 
+  ggplot(aes(oxy, depth, color = as.factor(smhi_serial_no))) +
+  scale_y_continuous(trans = "reverse") + 
+  scale_color_viridis(discrete = TRUE) +
+  geom_point()
+
+q4_15 %>% 
+  filter(smhi_serial_no %in% c(unique(filter(d, year == 2015, quarter == 4)$smhi_serial_no))) %>% 
+  ggplot(aes(oxy, depth)) +
+  scale_y_continuous(trans = "reverse") +
+  geom_point(size = 0.5) +
+  facet_wrap(~smhi_serial_no)
+
+# Before joining, we need to summarise the oxygen a bit. I *assume* that the deepest point is the bottom. I will average oxygen for the deepest 3 metres. 
+
+q4_15_trim <- q4_15 %>% 
+  group_by(smhi_serial_no) %>% 
+  mutate(ctd_depth = ifelse(depth > max(depth) -3, "near bottom", "pelagic")) %>% 
+  ungroup() %>% 
+  filter(ctd_depth == "near bottom") %>% 
+  group_by(smhi_serial_no) %>% 
+  summarise(oxy = mean(oxy),
+                   depth = mean(depth),
+                   temp = mean(temp)) %>% 
+  ungroup()
+  
+# Join in oxygen data!
+d_q4_15 <- d %>% 
+  filter(year == 2015, quarter == 4) %>% 
+  left_join(q4_15_trim, by = "smhi_serial_no")
+
+# Check oxygen values
+# Seems low? This is from the BITS manual:
+# Selected hauls should be omitted in the case when the results of at least two stations in the same depth layers have revealed that fish not appeared in the zone which was covered by the net opening and when hydrographical observations have revealed Manual of the Baltic International Trawl Surveys (BITS) 5 that oxygen content is less that 1.5 ml/l in the layer of vertical net opening
+
+ggplot(d_q4_15, aes(smhi_serial_no, oxy)) + 
+  geom_point() + 
+  geom_hline(yintercept = 1.5, alpha = 0.5, linetype = 2)
+
+ggplot(d_q4_15, aes(smhi_serial_no, temp)) + 
+  geom_point()
+
+# Check also the coordinates match
+ctd_q415 <- q4_15_trim
+trawl_q415 <- d %>% filter(year == 2015, quarter == 4) 
+          
+# https://stackoverflow.com/questions/71959927/spatial-join-two-data-frames-by-nearest-feature-and-date-in-r
+trawl_sf_q415 <- trawl_q415 %>% st_as_sf(coords = c("lon", "lat"), remove = FALSE) %>%
+  st_set_crs(4326) 
+
+ctd_q415 <- q4_15_trim %>%
+  # Add back in coord since they were removed after summarising
+  left_join(q4_15 %>%
+              distinct(smhi_serial_no, .keep_all = TRUE) %>% 
+              dplyr::select(lat_ctd, lon_ctd, smhi_serial_no), by = "smhi_serial_no") %>% 
+  st_as_sf(coords = c("lon_ctd", "lat_ctd"), remove = FALSE) %>%
+  st_set_crs(4326) 
+
+# Plot on map
+st_connect(trawl_sf_q415, ctd_q415) %>% 
+  mapview::mapview() +
+  mapview::mapview(trawl_sf_q415, color = 'tomato', col.regions = 'tomato') + 
+  mapview::mapview(ctd_q415, color = 'steelblue', col.regions = 'steelblue')
+```
+
+Seems to work! Now try a more recent year with NAs where we need to match by coordinates.. Let's do Q4 2020. This specific survey comes in single file where station is *not* indicated by tab name, but a string in *somewhat* consistent position in the excel file. Each tab does have a 3 digit number that could be the serial no, but after looking at the serial numbers in the trawl data I see that it cannot be. They are in the 700-range.
+
+```{r}
+d %>% 
+  filter(year == 2020 & quarter == 4) %>% 
+  distinct(smhi_serial_no) %>% pull()
+```
+
+<span style="color:red;"> Another critical issue here is that in this specific cell the key is placed within a string. Like this `** Station: 6.5 Faro 0716`, where `0716` is the string. This is possible to retrieve though. However, for some tabs, only the station name is given, not the number. Like this: `** Station: 12se Nar`. This will result in an NA. This means we now have two sources for NA in the matching columns, and I will therefore try to join by coordinates instead. HOWEVER, the coordinates are not stored in a column, but as a part of random string I need to find in the raw data... Hence the multiple `lapply(tab_names_trim, function(x) read_excel(path = xl_data` with different "skips". Finally, not that the coordinates are not in decimal degrees but decimal minutes ... </span>
+
+In this code, I read all tabs containing CTD data and put them in a list. Then I loop through all data frames in the list and clean them up.
+
+```{r}
+setwd(home)
+
+xl_data <- paste0(home, "/data/bits-oxygen/20_11/CTD_BITS-06.xlsx")
+tab_names <- excel_sheets(path = xl_data)
+tab_names_trim <- tab_names[grepl("\\_SBE", tab_names)]
+
+# Put all tabs in a list. Skip different # rows to get either raw data, id or lat/lon
+list_vars <- lapply(tab_names_trim, function(x) read_excel(path = xl_data, sheet = x, skip = 12))
+list_all_id <- lapply(tab_names_trim, function(x) read_excel(path = xl_data, sheet = x))
+list_all_lat <- lapply(tab_names_trim, function(x) read_excel(path = xl_data, sheet = x, skip = 8))
+list_all_lon <- lapply(tab_names_trim, function(x) read_excel(path = xl_data, sheet = x, skip = 9))
+
+# list_all contains all relevant tabs. Loop through all these
+
+vars_list <- list()
+
+for(i in 1:length(tab_names_trim)){
+  
+  # Get the actual CTD data
+  vars <- list_vars[[i]] %>% 
+    dplyr::select(contains(c("deg C", "[true depth, m]", "[ml/l]"))) %>% 
+    dplyr::rename(temperature = 1,
+                  depth = 2,
+                  oxygen = 3)
+
+  # Now get the ID
+  id <- names(list_all_id[[i]])[1]
+  id <- strsplit(id, " ")[[1]]
+  id <- as.numeric(id[length(id)])
+  vars$smhi_serial_no <- id
+  
+  # Lat and lon for cross-checking
+  vars$lat <- names(list_all_lat[[i]])[1]
+  vars$lon <- names(list_all_lon[[i]])[1]
+  
+  # Clean up data!
+  #lat.d.d = format.position(lat.dm.m)
+  
+  vars <- vars %>%
+    mutate(temperature = as.numeric(temperature),
+           depth = as.numeric(depth),
+           oxygen = as.numeric(oxygen),
+           smhi_serial_no = as.numeric(smhi_serial_no)) %>% 
+    mutate(lat = str_remove(lat, "\\** Latitude: ")) %>% 
+    mutate(lat = str_remove(lat, " N")) %>% 
+    mutate(lat = str_remove(lat, " ")) %>% 
+    mutate(lat = format.position(as.numeric(lat))) %>% 
+    mutate(lat = as.numeric(lat)) %>% 
+    mutate(lon = str_remove(lon, "\\** Longitude: ")) %>% 
+    mutate(lon = str_remove(lon, " E")) %>% 
+    mutate(lon = str_remove(lon, " ")) %>% 
+    mutate(lon = format.position(as.numeric(lon))) %>% 
+    mutate(lon = as.numeric(lon)) %>% 
+    dplyr::rename(lat_ctd = lat, lon_ctd = lon, depth_ctd = depth)
+  
+  vars_list[[i]] <- vars
+  
+}
+
+q4_20 <- bind_rows(vars_list)
+```
+
+First explore the data
+
+```{r}
+q4_20 %>% 
+  filter(smhi_serial_no %in% c(unique(filter(d, year == 2020, quarter == 4)$smhi_serial_no))) %>% 
+  ggplot(aes(oxygen, depth_ctd, color = as.factor(smhi_serial_no))) +
+  scale_y_continuous(trans = "reverse") + 
+  scale_color_viridis(discrete = TRUE) +
+  geom_point()
+
+q4_20 %>% 
+  filter(smhi_serial_no %in% c(unique(filter(d, year == 2020, quarter == 4)$smhi_serial_no))) %>% 
+  ggplot(aes(oxygen, depth_ctd)) +
+  scale_y_continuous(trans = "reverse") +
+  geom_point(size = 0.5) +
+  facet_wrap(~smhi_serial_no)
+```
+
+Again, lots of NA in the `smhi_serial_no`. Make a new station ID by using coordinates instead.
+
+```{r}
+q4_20 %>% 
+  arrange(desc(depth_ctd))
+
+q4_20_id <- q4_20 %>% 
+  mutate(id = paste(round(lat_ctd, digits = 3), round(lon_ctd, digits = 3), sep = "_"))
+
+q4_20_id %>% 
+  filter(smhi_serial_no %in% c(unique(filter(d, year == 2020, quarter == 4)$smhi_serial_no))) %>% 
+  ggplot(aes(oxygen, depth_ctd, color = as.factor(id))) +
+  scale_y_continuous(trans = "reverse") + 
+  scale_color_viridis(discrete = TRUE) +
+  geom_point()
+
+q4_20_id %>% 
+  filter(smhi_serial_no %in% c(unique(filter(d, year == 2020, quarter == 4)$smhi_serial_no))) %>% 
+  ggplot(aes(oxygen, depth_ctd)) +
+  scale_y_continuous(trans = "reverse") +
+  geom_point(size = 0.5) +
+  facet_wrap(~id)
+```
+
+Still an NA but that's all we can do. Repeat the processes of summarizing oxygen near bottom. 
+
+```{r}
+q4_20_trim <- q4_20_id %>% 
+  group_by(id) %>% 
+  mutate(ctd_depth = ifelse(depth_ctd > max(depth_ctd) -3, "near bottom", "pelagic")) %>% 
+  ungroup() %>% 
+  filter(ctd_depth == "near bottom") %>% 
+  group_by(id) %>% 
+  summarise(oxy = mean(oxygen),
+                   depth = mean(depth_ctd),
+                   temp = mean(temperature)) %>% 
+  ungroup()
+
+# Inspect
+q4_20_trim %>% as.data.frame()
+```
+
+<span style="color:red;"> Ok, so here we also see that in one of the stations, the depth measure is way off, and this is verified in the excel file as well. </span>
+
+Remove this.
+
+```{r}
+q4_20_trim <- q4_20_trim %>% filter(depth < 300)
+```
+
+Here we would have joined this trimmed CTD data with the trawl data, but because of the lack of key, I will instead have to do it by matching nearest point. 
+
+```{r}
+# https://stackoverflow.com/questions/59621797/evaluating-the-closest-distance-from-one-point-between-multiple-options
+trawl_sf <- d %>%
+  filter(year == 2020 & quarter == 4) %>%
+  st_as_sf(coords = c("lon", "lat"), remove = FALSE) %>%
+  st_set_crs(4326) 
+
+ctd_sf <- q4_20_trim %>%
+  separate(id, sep = "_", into = c("lat", "lon"), convert = TRUE) %>% 
+  drop_na(lat) %>%
+  drop_na(lon) %>% 
+  st_as_sf(coords = c("lon", "lat"), remove = FALSE) %>%
+  st_set_crs(4326) 
+
+# Join df with df1, based on the nearest feature:
+nrow(trawl_sf)
+nrow(ctd_sf)
+
+df_near <- st_join(trawl_sf, ctd_sf, join = st_nearest_feature)
+
+str(df_near)
+
+# Check distance in metres
+ctd_sf %>%
+  cbind(
+    trawl_sf[st_nearest_feature(ctd_sf, trawl_sf),]) %>% 
+  mutate(dist = st_distance(geometry, geometry.1, by_element = T)) %>% 
+  arrange(desc(dist)) %>% 
+  as.data.frame()
+
+# Here are the points on a map. Some trawl stations that are far from a CTD reading
+st_connect(trawl_sf, ctd_sf) %>% 
+  mapview::mapview() +
+  mapview::mapview(trawl_sf, color = 'tomato', col.regions = 'tomato') + 
+  mapview::mapview(ctd_sf, color = 'steelblue', col.regions = 'steelblue')
+
+# Here we can see which values of CTD are matched to trawl data
+ggplot() + 
+  geom_sf(data = trawl_sf, aes(color = "trawl"), size = 3, alpha = .6) +
+  geom_sf(data = ctd_sf, aes(color = "ctd"), alpha = .6) +
+  scale_color_manual(values = c("steelblue", "tomato"), name = "Data type") + 
+  geom_sf(data = st_connect(trawl_sf, ctd_sf), linewidth = 0.2)
+```
+
+Preliminary conclusions:
+
+  1) Not all trawl data have a CTD measurement, we'd need to discard stomach data, and some CTD measurements are nonsens
+  2) It is extremely time-consuming to prepare the data, essentially it needs to be done by each survey, and sometimes within each file (station) within a survey
+  3) At which depths do we summarise oxygen data? We cannot no for sure it's the bottom
+  4) How far from trawl locaiton is CTD ok to use?
+  
+# Do it for all years!
+  
+Here I will redo everything but with only the essential code. I can do until 18_11 using the approach in the first section.
+
+<span style="color:red;"> Note, it's not 100% the same code, because in some surveys, the row of data starts at a different line, and there are also different amounts of columns... </span>
+
+  
+```{r 2015 Q4 to 2018 Q4}
+# Nov 2015
+setwd(paste0(home, "/data/bits-oxygen/15_11/CTD_SBE911/CNV/for_r/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q4_15 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 385, col_types = "guess") %>% 
+                         dplyr::select(4, 12, 19, 23, 24) %>% 
+                         dplyr::rename(temp = 1,
+                                       oxy = 2,
+                                       depth = 3, 
+                                       lat = 4,
+                                       lon = 5) %>%
+                         mutate(filename = .x)) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(4, 2015, sep = "_"),
+         smhi_serial_no = as.numeric(sub(".*\\.(.*)", "\\1", filename)))
+
+# Feb 2016
+setwd(paste0(home, "/data/bits-oxygen/16_02/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q1_16 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 368, col_types = "guess") %>% 
+                         dplyr::select(4, 12, 19, 23, 24) %>% 
+                         dplyr::rename(temp = 1,
+                                       oxy = 2,
+                                       depth = 3, 
+                                       lat = 4,
+                                       lon = 5) %>%
+                         mutate(filename = .x)) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(1, 2016, sep = "_"), 
+         smhi_serial_no = as.numeric(sub(".*\\.(.*)", "\\1", filename)))
+
+# Nov 2016
+setwd(paste0(home, "/data/bits-oxygen/16_11/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q4_16 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 368, col_types = "guess") %>% 
+                         dplyr::select(4, 12, 19, 23, 24) %>% 
+                         dplyr::rename(temp = 1,
+                                       oxy = 2,
+                                       depth = 3, 
+                                       lat = 4,
+                                       lon = 5) %>%
+                         mutate(filename = .x)) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(4, 2016, sep = "_"), 
+         smhi_serial_no = as.numeric(sub(".*\\.(.*)", "\\1", filename)))
+
+# Feb 2017
+setwd(paste0(home, "/data/bits-oxygen/17_02/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q1_17 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 385, col_types = "guess") %>% 
+                         dplyr::select(4, 12, 19, 23, 24) %>% 
+                         dplyr::rename(temp = 1,
+                                       oxy = 2,
+                                       depth = 3, 
+                                       lat = 4,
+                                       lon = 5) %>%
+                         mutate(filename = .x)) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(1, 2017, sep = "_"),
+         smhi_serial_no = as.numeric(sub(".*\\.(.*)", "\\1", filename)))
+
+# Nov 2017
+setwd(paste0(home, "/data/bits-oxygen/17_11/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q4_17 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 375, col_types = "guess") %>% 
+                         dplyr::select(4, 12, 19, 22, 23) %>% # Note: different indicies here
+                         dplyr::rename(temp = 1,
+                                       oxy = 2,
+                                       depth = 3, 
+                                       lat = 4,
+                                       lon = 5) %>%
+                         mutate(filename = .x) %>% 
+                         mutate(temp = as.numeric(temp),
+                                oxy = as.numeric(oxy),
+                                lat = as.numeric(lat),
+                                lon = as.numeric(lon))) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(4, 2017, sep = "_"),
+         smhi_serial_no = as.numeric(sub(".*\\.(.*)", "\\1", filename)))
+
+
+# Feb 2018
+setwd(paste0(home, "/data/bits-oxygen/18_02/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q1_18 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 375, col_types = "guess") %>% 
+                         dplyr::select(4, 12, 19, 22, 23) %>% 
+                         dplyr::rename(temp = 1,
+                                       oxy = 2,
+                                       depth = 3, 
+                                       lat = 4,
+                                       lon = 5) %>%
+                         mutate(filename = .x) %>% 
+                         mutate(temp = as.numeric(temp),
+                                oxy = as.numeric(oxy),
+                                lat = as.numeric(lat),
+                                lon = as.numeric(lon))) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(1, 2018, sep = "_"),
+         smhi_serial_no = as.numeric(sub(".*\\.(.*)", "\\1", filename)))
+
+# Nov 2018
+setwd(paste0(home, "/data/bits-oxygen/18_11/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q4_18 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 377, col_types = "guess") %>% 
+                         dplyr::select(4, 12, 19, 23, 24) %>% 
+                         dplyr::rename(temp = 1,
+                                       oxy = 2,
+                                       depth = 3, 
+                                       lat = 4,
+                                       lon = 5) %>%
+                         mutate(filename = .x) %>% 
+                         mutate(temp = as.numeric(temp),
+                                oxy = as.numeric(oxy),
+                                depth = as.numeric(depth),
+                                lat = as.numeric(lat),
+                                lon = as.numeric(lon))) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         smhi_serial_no = as.numeric(sub(".*\\.(.*)", "\\1", filename)),
+         q_year = paste(4, 2018, sep = "_"))
+
+setwd(home)
+
+# Combine all these data
+oxy_old_ctd <- bind_rows(q4_15,
+                         q1_16, q4_16,
+                         q1_17, q4_17,
+                         q1_18, q4_18) %>% 
+  drop_na(oxy)
+
+# Quick inspect
+ggplot(oxy_old_ctd, aes(oxy)) + 
+  geom_histogram() + 
+  facet_wrap(~ q_year)
+
+ggplot(oxy_old_ctd, aes(lat)) + 
+  facet_wrap(~q_year, scales = "free") + 
+  geom_histogram()
+
+ggplot(oxy_old_ctd %>% filter(q_year == "4_2018"), aes(lat)) + 
+  facet_wrap(~filename, scales = "free") + 
+  geom_histogram()
+```
+
+<span style="color:red;"> Some coordinates are off, but they are also in the raw data </span>
+
+Now more on to the more recent data. 2019 Q4 and 2020 Q1 will have to be done solo because they are single excel file with tabs for each station. It does seem to have station number as tab names so I don't need to match by coordinates.
+
+<span style="color:red;"> Here I don't have a depth column, only pressue and what I guess is bottom depth. I will keep pressure. We need this to calculate the average oxygen near sea-bottom. Before I said 3 metres above deepest, but I might just go with the highest pressure here for this survey. </span>
+
+```{r 2019 Q4 to 2020 Q1}
+setwd(home)
+
+d %>%
+  filter(year == 2019, quarter == 4) %>%
+  distinct(smhi_serial_no) %>%
+  arrange(smhi_serial_no) %>% 
+  pull()
+
+d %>%
+  filter(year == 2020, quarter == 1) %>%
+  distinct(smhi_serial_no) %>%
+  arrange(smhi_serial_no) %>% 
+  pull()
+
+# OK, yes, tabs are station numbers (verify in spreadsheet). Read tabs as elements in a list, then loop through
+
+# 2019 Q4
+xl_data <- paste0(home, "/data/bits-oxygen/19_11/Bits2019 Q4 redigerad.xlsx")
+tab_names <- excel_sheets(path = xl_data)
+# Select only tabs with CTD data
+tab_names_trim <- tab_names[grepl("CTD", tab_names)]
+
+# Put all tabs in a list. Skip different # rows to get either raw data, id or lat/lon
+list_vars_q419 <- lapply(tab_names_trim, function(x) read_excel(path = xl_data, sheet = x, skip = 34))
+
+str(list_vars_q419[[1]])
+
+# list_all contains all relevant tabs. Loop through all these
+
+vars_list_q419 <- list()
+
+for(i in 1:length(tab_names_trim)){
+  
+  # Get the actual CTD data
+  vars <- list_vars_q419[[i]] %>% 
+    dplyr::rename(temp = `TEMPERATURE;C`,
+                  oxy = `ml/L`,
+                  pressue_bar = `PRESSURE;DBAR`) %>% 
+    dplyr::select(temp, oxy, pressue_bar) %>% 
+    mutate(q_year = paste(4, 2019, sep = "_"),
+                  smhi_serial_no = tab_names_trim[i],
+                  smhi_serial_no = as.numeric(str_remove(smhi_serial_no, "CTD")))
+
+  vars_list_q419[[i]] <- vars
+  
+}
+
+q4_19 <- bind_rows(vars_list_q419)
+
+
+# 2020 Q1
+xl_data <- paste0(home, "/data/bits-oxygen/20_02/Bits 2020 Q1.xlsx")
+tab_names <- excel_sheets(path = xl_data)
+# Select only tabs with CTD data
+tab_names_trim <- tab_names[grepl("CTD", tab_names)]
+
+# Put all tabs in a list. Skip different # rows to get either raw data, id or lat/lon
+list_vars_q120 <- lapply(tab_names_trim, function(x) read_excel(path = xl_data, sheet = x, skip = 34))
+
+str(list_vars_q120[[1]])
+
+# list_all contains all relevant tabs. Loop through all these
+vars_list_q120 <- list()
+
+for(i in 1:length(tab_names_trim)){
+  
+  # Get the actual CTD data
+  vars <- list_vars_q120[[i]] %>% 
+    dplyr::rename(temp = `TEMPERATURE;C`,
+                  oxy = `ml/L`,
+                  pressue_bar = `PRESSURE;DBAR`) %>% 
+    dplyr::select(temp, oxy, pressue_bar) %>% 
+    mutate(q_year = paste(1, 2020, sep = "_"),
+           smhi_serial_no = tab_names_trim[i],
+           smhi_serial_no = as.numeric(str_remove(smhi_serial_no, "CTD")))
+
+
+  vars_list_q120[[i]] <- vars
+  
+}
+
+q1_20 <- bind_rows(vars_list_q120)
+
+unique(q1_20$smhi_serial_no)
+
+```
+
+<span style="color:red;"> Ok, now we are entering the times when we have to join by coordinates. It's also the type of files where this is not stored as a column... First I need to do Q4 2020 again, because unlike the rest of the data that comes after, they are in a single file with tabs, the others have 1 file per station </span>
+
+```{r}
+setwd(home)
+
+xl_data <- paste0(home, "/data/bits-oxygen/20_11/CTD_BITS-06.xlsx")
+tab_names <- excel_sheets(path = xl_data)
+tab_names_trim <- tab_names[grepl("\\_SBE", tab_names)]
+
+# Put all tabs in a list. Skip different # rows to get either raw data, id or lat/lon
+list_vars <- lapply(tab_names_trim, function(x) read_excel(path = xl_data, sheet = x, skip = 12))
+list_all_id <- lapply(tab_names_trim, function(x) read_excel(path = xl_data, sheet = x))
+list_all_lat <- lapply(tab_names_trim, function(x) read_excel(path = xl_data, sheet = x, skip = 8))
+list_all_lon <- lapply(tab_names_trim, function(x) read_excel(path = xl_data, sheet = x, skip = 9))
+
+# list_all contains all relevant tabs. Loop through all these
+
+vars_list <- list()
+
+for(i in 1:length(tab_names_trim)){
+  
+  # Get the actual CTD data
+  vars <- list_vars[[i]] %>% 
+    dplyr::select(contains(c("deg C", "[true depth, m]", "[ml/l]"))) %>% 
+    dplyr::rename(temp = 1,
+                  depth = 2,
+                  oxy = 3)
+
+  # Now get the ID
+  id <- names(list_all_id[[i]])[1]
+  id <- strsplit(id, " ")[[1]]
+  id <- as.numeric(id[length(id)])
+  vars$smhi_serial_no <- id
+  
+  # Lat and lon for cross-checking
+  vars$lat <- names(list_all_lat[[i]])[1]
+  vars$lon <- names(list_all_lon[[i]])[1]
+  
+  # Clean up data!
+  #lat.d.d = format.position(lat.dm.m)
+  
+  vars <- vars %>%
+    mutate(temp = as.numeric(temp),
+           depth = as.numeric(depth),
+           oxy = as.numeric(oxy),
+           smhi_serial_no = as.numeric(smhi_serial_no)) %>% 
+    mutate(lat = str_remove(lat, "\\** Latitude: ")) %>% 
+    mutate(lat = str_remove(lat, " N")) %>% 
+    mutate(lat = str_remove(lat, " ")) %>% 
+    mutate(lat = format.position(as.numeric(lat))) %>% 
+    mutate(lat = as.numeric(lat)) %>% 
+    mutate(lon = str_remove(lon, "\\** Longitude: ")) %>% 
+    mutate(lon = str_remove(lon, " E")) %>% 
+    mutate(lon = str_remove(lon, " ")) %>% 
+    mutate(lon = format.position(as.numeric(lon))) %>% 
+    mutate(lon = as.numeric(lon))
+  
+  vars_list[[i]] <- vars
+  
+}
+
+q4_20 <- bind_rows(vars_list) %>% mutate(q_year = paste(4, 2020, sep = "_"))
+```
+
+Now do the rest of the recent data. This is q1 2021, q4 2021, q1 2022 and q4 2022
+
+<span style="color:red;"> For quarter 1, 2021, the actual data doesn't start at the same row number... need to split them in two folders. Therefore I do this one separately </span>
+
+```{r 2021 Q1}
+# Q1 2021
+setwd(paste0(home, "/data/bits-oxygen/21_02/208/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q1_21a <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 207, col_types = "guess") %>% 
+                         dplyr::select(3, 10, 12) %>% 
+                         dplyr::rename(temp = 1,
+                                       depth = 2, 
+                                       oxy = 3) %>%
+                         mutate(filename = .x)) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(1, 2021, sep = "_"))
+
+q1_21a
+
+# Now I need to find the coordinates, and match them by the filename.
+q1_21a_lat <- purrr::map_df(filenames, 
+                            ~read_excel(.x, skip = 20, col_types = "guess") %>% 
+                              mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:BITS`, "...3", "...4", "filename")) %>% 
+  filter(`Cruise:BITS` %in% c("Latitude:", "Longitude:")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Latitude:", "lat", "lon"),
+                coords = paste(...3, ...4, sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lat") %>% 
+  dplyr::rename(lat_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lat = format.position(as.numeric(lat_minute)),
+                filename = str_remove(filename, ".xlsx"))
+
+q1_21a_lat
+
+q1_21a_lon <- purrr::map_df(filenames, 
+                            ~read_excel(.x, skip = 20, col_types = "guess") %>% 
+                              mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:BITS`, "...3", "...4", "filename")) %>% 
+  filter(`Cruise:BITS` %in% c("Latitude:", "Longitude:")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Latitude:", "lat", "lon"),
+                coords = paste(...3, ...4, sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lon") %>% 
+  dplyr::rename(lon_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lon = format.position(as.numeric(lon_minute)),
+                filename = str_remove(filename, ".xlsx"))
+
+q1_21a_lon
+
+coords_a <- q1_21a_lat %>% left_join(q1_21a_lon, by = "filename") %>% dplyr::select(filename, lat, lon)
+coords_a
+
+q1_21a <- q1_21a %>% left_join(coords_a, by = "filename")
+
+q1_21a
+
+
+
+# Now do the other type of file
+
+setwd(paste0(home, "/data/bits-oxygen/21_02/387/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q1_21b <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 387, col_types = "guess") %>% 
+                         dplyr::select(3, 10, 12) %>% 
+                         dplyr::rename(temp = 1,
+                                       depth = 2, 
+                                       oxy = 3) %>%
+                         mutate(filename = .x)) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(1, 2021, sep = "_"))
+
+q1_21b
+
+# Now I need to find the coordinates, and match them by the filename.
+q1_21b_lat <- purrr::map_df(filenames, 
+                            ~read_excel(.x, skip = 197, col_types = "guess") %>% 
+                              mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:BITS`, "...3", "...4", "filename")) %>% 
+  filter(`Cruise:BITS` %in% c("Latitude:", "Longitude:")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Latitude:", "lat", "lon"),
+                coords = paste(...3, ...4, sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lat") %>% 
+  dplyr::rename(lat_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lat = format.position(as.numeric(lat_minute)),
+                filename = str_remove(filename, ".xlsx"))
+
+q1_21b_lat
+
+q1_21b_lon <- purrr::map_df(filenames, 
+                            ~read_excel(.x, skip = 197, col_types = "guess") %>% 
+                              mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:BITS`, "...3", "...4", "filename")) %>% 
+  filter(`Cruise:BITS` %in% c("Latitude:", "Longitude:")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Latitude:", "lat", "lon"),
+                coords = paste(...3, ...4, sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lon") %>% 
+  dplyr::rename(lon_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lon = format.position(as.numeric(lon_minute)),
+                filename = str_remove(filename, ".xlsx"))
+
+q1_21b_lon
+
+coords_b <- q1_21b_lat %>% left_join(q1_21b_lon, by = "filename") %>% dplyr::select(filename, lat, lon)
+coords_b
+
+q1_21b <- q1_21b %>% left_join(coords_b, by = "filename")
+
+q1_21b
+
+# Combine!
+q1_21 <- bind_rows(q1_21a, q1_21b) %>% 
+  mutate(temp = as.numeric(temp),
+         depth = as.numeric(depth),
+         oxy = as.numeric(oxy),
+         lat = as.numeric(as.character(lat)),
+         lon = as.numeric(as.character(lon)))
+```
+
+Continuing with q4 2021... <span style="color:red;"> Here corrdinates are reported differently (as in different positions in the string...). And latitude is even misspelled!?!? </span>
+
+```{r}
+# Q4 2021
+setwd(paste0(home, "/data/bits-oxygen/21_11/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q4_21 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 208, col_types = "guess") %>% 
+                         dplyr::select(3, 10, 12) %>% 
+                         dplyr::rename(temp = 1,
+                                       depth = 2, 
+                                       oxy = 3) %>%
+                         mutate(filename = .x,
+                                temp = as.numeric(temp),
+                                depth = as.numeric(depth),
+                                oxy = as.numeric(oxy))) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(4, 2021, sep = "_"))
+
+# Now I need to find the coordinates, and match them by the filename.
+q4_21_lat <- purrr::map_df(filenames, 
+                           ~read_excel(.x, skip = 20, col_types = "guess") %>% 
+                             mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:BITSQ42021`, "...6", "...7", "filename")) %>% 
+  filter(`Cruise:BITSQ42021` %in% c("Lattitude", "Longitude")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Lattitude", "lat", "lon"),
+                coords = paste(...6, ...7, sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lat") %>% 
+  dplyr::rename(lat_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lat = format.position(as.numeric(lat_minute)),
+                filename = str_remove(filename, ".xlsx"))
+
+q4_21_lat
+
+q4_21_lon <- purrr::map_df(filenames, 
+                           ~read_excel(.x, skip = 20, col_types = "guess") %>% 
+                             mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:BITSQ42021`, "...6", "...7", "filename")) %>% 
+  filter(`Cruise:BITSQ42021` %in% c("Lattitude", "Longitude")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Lattitude", "lat", "lon"),
+                coords = paste(...6, ...7, sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lon") %>% 
+  dplyr::rename(lon_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lon = format.position(as.numeric(lon_minute)),
+                filename = str_remove(filename, ".xlsx"))
+
+q4_21_lon
+
+coords <- q4_21_lat %>% left_join(q4_21_lon, by = "filename") %>% dplyr::select(filename, lat, lon)
+coords
+
+q4_21 <- q4_21 %>% left_join(coords, by = "filename")
+```
+
+Continuing with q1 2022... 
+
+```{r}
+# Q1 2022
+setwd(paste0(home, "/data/bits-oxygen/22_02/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q1_22 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 208, col_types = "guess") %>% 
+                         dplyr::select(3, 10, 12) %>% 
+                         dplyr::rename(temp = 1,
+                                       depth = 2, 
+                                       oxy = 3) %>%
+                         mutate(filename = .x,
+                                temp = as.numeric(temp),
+                                depth = as.numeric(depth),
+                                oxy = as.numeric(oxy))) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(1, 2022, sep = "_"))
+
+q1_22
+
+# Now I need to find the coordinates, and match them by the filename.
+q1_22_lat <- purrr::map_df(filenames, 
+                           ~read_excel(.x, skip = 20, col_types = "guess") %>% 
+                             mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:`, "...6", "...7", "filename")) %>% 
+  filter(`Cruise:` %in% c("Lattitude", "Longitude")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Lattitude", "lat", "lon"),
+                coords = paste(...6, ...7, sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lat") %>% 
+  dplyr::rename(lat_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lat = format.position(as.numeric(lat_minute)),
+                filename = str_remove(filename, ".xlsx"))
+
+q1_22_lat
+
+q1_22_lon <- purrr::map_df(filenames, 
+                           ~read_excel(.x, skip = 20, col_types = "guess") %>% 
+                             mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:`, "...6", "...7", "filename")) %>% 
+  filter(`Cruise:` %in% c("Lattitude", "Longitude")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Lattitude", "lat", "lon"),
+                coords = paste(...6, ...7, sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lon") %>% 
+  dplyr::rename(lon_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lon = format.position(as.numeric(lon_minute)),
+                filename = str_remove(filename, ".xlsx"))
+
+q1_22_lon
+
+coords <- q1_22_lat %>% left_join(q1_22_lon, by = "filename") %>% dplyr::select(filename, lat, lon)
+coords
+
+q1_22 <- q1_22 %>% left_join(coords, by = "filename")
+```
+
+Final dataset! q4 2022... <span style="color:red;"> And of course, here the CTD can spell to latitude again. And, the coordinates again end up in a different string... And best of all, half the files have coordinates spanning over 3 columns, other two... </span>
+
+```{r}
+# Q4 2022
+setwd(paste0(home, "/data/bits-oxygen/22_11/"))
+
+filenames <- list.files(pattern = "*.xlsx")
+
+q4_22 <- purrr::map_df(filenames, 
+                       ~read_excel(.x, skip = 208, col_types = "guess") %>% 
+                         dplyr::select(3, 10, 12) %>% 
+                         dplyr::rename(temp = 1,
+                                       depth = 2, 
+                                       oxy = 3) %>%
+                         mutate(filename = .x,
+                                temp = as.numeric(temp),
+                                depth = as.numeric(depth),
+                                oxy = as.numeric(oxy))) %>% 
+  mutate(filename = str_remove(filename, ".xlsx"),
+         q_year = paste(4, 2022, sep = "_"))
+
+q4_22
+
+# Now I need to find the coordinates, and match them by the filename.
+# The latter half have colnames spanning 3 columns, the first half only two... 
+
+filenames_a <- filenames[1:18] # Look at this indexing... 
+  
+q4_22_lat_a <- purrr::map_df(filenames_a, 
+                             ~read_excel(.x, skip = 20, col_types = "guess") %>% 
+                             mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:`, "BITS", "...4", "filename")) %>% # not the difference in where the coordinates end up
+  filter(`Cruise:` %in% c("Latitude:", "Longitude:")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Latitude:", "lat", "lon"),
+         coords = paste(BITS, ...4, sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lat") %>% 
+  dplyr::rename(lat_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lat = format.position(as.numeric(lat_minute)),
+                filename = str_remove(filename, ".xlsx"))
+
+q4_22_lat_a
+
+filenames_b <- filenames[19:length(filenames)]
+  
+q4_22_lat_b <- purrr::map_df(filenames_b, 
+                             ~read_excel(.x, skip = 20, col_types = "guess") %>% 
+                             mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:`, "BITS", "...4", "...5", "filename")) %>% # not the difference in where the coordinates end up
+  filter(`Cruise:` %in% c("Latitude:", "Longitude:")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Latitude:", "lat", "lon"),
+         coords = paste(BITS, paste(...4, ...5, sep = "."), sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lat") %>% 
+  dplyr::rename(lat_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lat_minute = str_remove(lat_minute, "\\.N")) %>%  # Note this
+  mutate(lat = format.position(as.numeric(lat_minute)),
+                filename = str_remove(filename, ".xlsx"))
+
+q4_22_lat_b
+
+# Here's how I found how to split
+# : it doesn't split all excel-files in the same way, so I can't extract the coordinates properly...
+# t <- q4_22_lat %>% filter(E_N == "lat")
+# unique(t$BITS)
+# unique(t$...4)
+# t %>% filter(...4 == 21)
+# t %>% filter(...4 == 26.398)
+
+q4_22_lon_a <- purrr::map_df(filenames_a, 
+                             ~read_excel(.x, skip = 20, col_types = "guess") %>% 
+                             mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:`, "BITS", "...4", "filename")) %>% # not the difference in where the coordinates end up
+  filter(`Cruise:` %in% c("Latitude:", "Longitude:")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Latitude:", "lat", "lon"),
+         coords = paste(BITS, ...4, sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lon") %>% 
+  dplyr::rename(lon_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lon = format.position(as.numeric(lon_minute)),
+         filename = str_remove(filename, ".xlsx"))
+
+q4_22_lon_a
+
+q4_22_lon_b <- purrr::map_df(filenames_b, 
+                             ~read_excel(.x, skip = 20, col_types = "guess") %>% 
+                             mutate(filename = .x)) %>% 
+  dplyr::select(c(`Cruise:`, "BITS", "...4", "...5", "filename")) %>% # not the difference in where the coordinates end up
+  filter(`Cruise:` %in% c("Latitude:", "Longitude:")) %>% 
+  dplyr::rename(E_N = 1) %>% 
+  mutate(E_N = ifelse(E_N == "Latitude:", "lat", "lon"),
+         coords = paste(BITS, paste(...4, ...5, sep = "."), sep = "")) %>% 
+  dplyr::select(E_N, coords, filename) %>% 
+  filter(E_N == "lon") %>% 
+  dplyr::rename(lon_minute = coords) %>% 
+  dplyr::select(-E_N) %>% 
+  mutate(lon_minute = str_remove(lon_minute, "\\.E")) %>%  # Note this
+  mutate(lon = format.position(as.numeric(lon_minute)),
+         filename = str_remove(filename, ".xlsx"))
+
+q4_22_lon_b
+
+q4_22_lat <- bind_rows(q4_22_lat_a, q4_22_lat_b)
+q4_22_lon <- bind_rows(q4_22_lon_a, q4_22_lon_b)
+
+coords <- q4_22_lat %>% left_join(q4_22_lon, by = "filename") %>% dplyr::select(filename, lat, lon)
+coords
+
+q4_22 <- q4_22 %>% left_join(coords, by = "filename")
+
+# Drop strange coords for now
+hist(q4_22$lat)
+hist(q4_22$lon)
+
+q4_22 <- q4_22 %>% filter(lon > 10)
+```
+
+Combine all oxygen CTD's with the matching key. Then summarise them by key, year and quarter before joining.
+
+<span style="color:red;"> Note also the depth issue here. Seems like it's bimodal, with unrealistic values that seem to be one digit too large!? </span>
+
+```{r}
+oxy_with_key <- bind_rows(oxy_old_ctd, # multiple file data with serial no
+                          q4_19, q1_20) %>% # single file data with serial no
+  mutate(smhi_serial_no_all = paste(q_year, smhi_serial_no, sep = "_")) 
+
+# Summarise data before joining with trawl data. First do it on the depth data.
+oxy_with_key_trim_depth <- oxy_with_key %>% 
+  filter(!is.na(depth)) %>% 
+  group_by(smhi_serial_no_all) %>% 
+  mutate(ctd_depth = ifelse(depth > max(depth) -3, "near bottom", "pelagic")) %>% 
+  ungroup() %>% 
+  filter(ctd_depth == "near bottom") %>% 
+  group_by(smhi_serial_no_all) %>% 
+  summarise(oxy = mean(oxy),
+            depth = mean(depth),
+            temp = mean(temp))
+
+oxy_with_key_trim_depth
+
+oxy_with_key_trim_depth_NA <- oxy_with_key %>% 
+  filter(is.na(depth)) %>% 
+  group_by(smhi_serial_no_all) %>% 
+  filter(pressue_bar == max(pressue_bar)) %>% 
+  group_by(smhi_serial_no_all)
+
+oxy_with_key_trim_depth_NA
+
+oxy_with_key_trim_join <- bind_rows(oxy_with_key_trim_depth,
+                                    oxy_with_key_trim_depth_NA) %>% 
+  dplyr::select(smhi_serial_no_all, temp, oxy, depth)
+
+oxy_with_key_trim_join
+          
+# Join with data!
+d_with_key <- d %>% filter(q_year %in% c(unique(oxy_with_key$q_year)))
+
+d_with_key <- d_with_key %>% left_join(oxy_with_key_trim_join, by = "smhi_serial_no_all")
+
+# Which ones are missing?
+d_with_key %>% 
+  filter(is.na(oxy))
+
+# Don't know why these are missing but we will move on. 
+
+# Next we can check how close to the bottom our average is. Before doing that, check depth again.
+d_with_key %>% 
+  mutate(depth2 = ifelse(bottom_depth > 250, "deeper than 250 m", "normal")) %>% 
+  ggplot(aes(lon, lat, color = as.factor(year), shape = as.factor(quarter))) +
+  geom_point() + 
+  facet_wrap(~ depth2, ncol = 1) + 
+  coord_sf()
+
+d_with_key %>% 
+  mutate(depth2 = ifelse(bottom_depth > 250, "deeper than 250 m", "normal")) %>% 
+  group_by(year, depth2) %>% 
+  summarise(n = n()) %>% 
+  ggplot(aes(year, n, fill = depth2)) + 
+  geom_bar(stat = "identity")
+
+# I am going to assume that if depth is deeper than 250, I divide by 10, because in script 01, this gives a very good fit to raster-derived depth data
+d_with_key %>% 
+  drop_na(depth) %>% # These are the ones without any depth info
+  mutate(bottom_depth2 = ifelse(bottom_depth > 250, bottom_depth/10, bottom_depth),
+         depth_diff = bottom_depth2 - depth) %>% 
+  ggplot(aes(smhi_serial_no_all, depth_diff)) + 
+  geom_point()
+```
+
+<span style="color:red;"> Even though correcting for the depth issue and looking only at data where we have depth from trawl and from CTD, we can still see clearly that the deepest recorded CTD data is not always near the bottom. </span>
+
+Now do the ones with missing keys where we have to match by spatial location.
+
+```{r}
+oxy_without_key <- bind_rows(q4_20, # single file data without serial
+                             q1_21, q4_21, q1_22, q4_22)  # multiple file data without serial 
+
+
+oxy_without_key <- oxy_without_key %>%
+  filter(lon > 5)
+
+# Summarize data!
+oxy_without_key_trim <- oxy_without_key %>% 
+  mutate(id = paste(lat, lon, q_year, sep = "_")) %>%  # remember we can't use smhi serial no here because of missing values
+  group_by(id) %>% 
+  mutate(ctd_depth = ifelse(depth > max(depth) -3, "near bottom", "pelagic")) %>% 
+  ungroup() %>% 
+  filter(ctd_depth == "near bottom") %>% 
+  group_by(id) %>% 
+  summarise(oxy = mean(oxy),
+                   depth = mean(depth),
+                   temp = mean(temp))
+
+
+# https://stackoverflow.com/questions/59621797/evaluating-the-closest-distance-from-one-point-between-multiple-options
+trawl_sf <- d %>%
+  # Filter q_years in the no-key ctd data
+  filter(q_year %in% c(unique(oxy_without_key$q_year))) %>% 
+  st_as_sf(coords = c("lon", "lat"), remove = FALSE) %>%
+  st_set_crs(4326) 
+
+ctd_sf <- oxy_without_key_trim %>%
+  separate(id, sep = "_", into = c("lat", "lon", "quarter", "year"), convert = TRUE) %>% 
+  mutate(q_year = paste(quarter, year, sep = "_")) %>% 
+  drop_na(lat) %>%
+  drop_na(lon) %>% 
+  st_as_sf(coords = c("lon", "lat"), remove = FALSE) %>%
+  st_set_crs(4326) 
+
+
+lis <- list()
+
+for(i in unique(oxy_without_key$q_year)){
+  
+  trawl_sf_i <- filter(trawl_sf, q_year == i)
+  ctd_sf_i <- filter(ctd_sf, q_year == i)
+  
+  df_near <- st_join(trawl_sf_i, ctd_sf_i, join = st_nearest_feature)
+
+  # Check distance in metres
+  dist <- trawl_sf_i %>%
+    cbind(
+      ctd_sf_i[st_nearest_feature(trawl_sf_i, ctd_sf_i),]) %>% 
+    mutate(dist = st_distance(geometry, geometry.1, by_element = T)) %>% 
+    arrange(desc(dist)) %>% 
+    as.data.frame()
+  
+  dist
+  
+  # Plot on map
+  print(st_connect(trawl_sf_i, ctd_sf_i) %>%
+    mapview::mapview() +
+    mapview::mapview(trawl_sf, color = 'tomato', col.regions = 'tomato') + 
+    mapview::mapview(ctd_sf, color = 'steelblue', col.regions = 'steelblue'))
+  
+  # Here we can see which values of CTD are matched to trawl data
+  print(ggplot() + 
+    geom_sf(data = trawl_sf, aes(color = "trawl"), size = 3, alpha = .6) +
+    geom_sf(data = ctd_sf, aes(color = "ctd"), alpha = .6) +
+    scale_color_manual(values = c("steelblue", "tomato"), name = "Data type") + 
+    geom_sf(data = st_connect(trawl_sf, ctd_sf), linewidth = 0.2))
+  
+  lis[[i]] <- df_near %>%
+    as.data.frame() %>%
+    dplyr::select(haul_id, oxy, depth, temp) %>% 
+    mutate(q_year = i,
+           dist_m = as.numeric(str_remove(dist$dist, " [m]")))
+ 
+}
+
+oxy_without_key_trim_join <- bind_rows(lis)
+
+# Join these data into the trawl data by haul_id
+d_without_key <- d %>% filter(q_year %in% c(unique(oxy_without_key$q_year)))
+
+d_without_key <- d_without_key %>% left_join(oxy_without_key_trim_join, by = "haul_id")
+
+# Now, I don't have any missing environmental variables because I join by nearest... but that means distances can be waaay off
+# Removing values further away than... 5 km... ?! That is 20% of the data
+hist(d_without_key$dist_m)
+
+d_without_key <- d_without_key %>% 
+  mutate(oxy = ifelse(dist_m > 5000, NA, oxy),
+         temp = ifelse(dist_m > 5000, NA, temp),
+         depth = ifelse(dist_m > 5000, NA, depth))
+
+# Which ones are missing? Pretty spread out. Do not suspect a systematic error here
+d_without_key %>% 
+  filter(is.na(oxy))
+
+# Next we can check how close to the bottom our average is. Before doing that, check depth again.
+d_without_key %>% 
+  mutate(depth2 = ifelse(bottom_depth > 250, "deeper than 250 m", "normal")) %>% 
+  ggplot(aes(lon, lat, color = as.factor(year), shape = as.factor(quarter))) +
+  geom_point() + 
+  facet_wrap(~ depth2, ncol = 1) + 
+  coord_sf()
+
+d_without_key %>% 
+  mutate(depth2 = ifelse(bottom_depth > 250, "deeper than 250 m", "normal")) %>% 
+  group_by(year, depth2) %>% 
+  summarise(n = n()) %>% 
+  ggplot(aes(year, n, fill = depth2)) + 
+  geom_bar(stat = "identity")
+
+# I am going to assume that if depth is deeper than 250, I divide by 10, because in script 01, this gives a very good fit to raster-derived depth data
+d_without_key %>% 
+  drop_na(depth) %>% # These are the ones without any depth info
+  mutate(bottom_depth2 = ifelse(bottom_depth > 250, bottom_depth/10, bottom_depth),
+         depth_diff = bottom_depth2 - depth) %>% 
+  ggplot(aes(smhi_serial_no_all, depth_diff)) + 
+  geom_point()
+
+# Interesting... Here it seems that the depth difference is more spread around 0, as we would expect.
+```
+
+Join and save these data:
+
+```{r}
+all_combined_ctd_trawl_data <- bind_rows(d_with_key %>% select(oxy, depth, temp, haul_id),
+                                         d_without_key %>% select(oxy, depth, temp, haul_id)) %>% 
+  drop_na(oxy, temp)
+
+
+str(all_combined_ctd_trawl_data)
+
+write_csv(all_combined_ctd_trawl_data, paste0(home, "/data/clean/ctd_trawl_joined.csv"))
+
+# Final check on how many stomachs and hauls that can't be matched
+d_all <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
+  
+nrow(d_all)
+
+d_all <- d_all %>% left_join(all_combined_ctd_trawl_data, by = "haul_id")
+
+names(d_all)
+
+# 13 % of all stomachs
+d_all %>% drop_na(oxy.y)
+
+# 9% % of all hauls
+d_all %>% distinct(haul_id, .keep_all = TRUE) %>% drop_na(oxy.y)
+```
+
+Final conclusions:
+
+  1) Not all trawl data have a CTD measurement, we'd need to discard stomach data (8% of hauls minimum, likely more), and some CTD measurements are nonsens
+  2) It is extremely time-consuming to prepare the data, essentially it needs to be done by each survey, and sometimes within each file (station) within a survey
+  3) At which depths do we summarise oxygen data? We cannot no for sure it's the bottom, and the data from the trawl and the CTD make it very clear the deepest recording is not always the bottom
+  4) How far from trawl locaiton is CTD ok to use?
+  
