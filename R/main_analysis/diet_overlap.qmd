@@ -141,7 +141,8 @@ dd <- LVs2$sites %>%
 #pal <- (brewer.pal(n = 8, name = "Dark2")[c(8, 7, 6)])
 pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
 
-ordi <- ggplot(dd, aes(x = V1, y = V2, color = group, size = pred_length_cm)) +
+ordi <- ggplot(dd, aes(x = V1, y = V2, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")),
+                       size = pred_length_cm)) +
   geom_point(alpha = 0.6) + 
   stat_ellipse(aes(V1, V2, color = group), 
                inherit.aes = FALSE, linewidth = 1, alpha = 0.3) + 
@@ -151,9 +152,11 @@ ordi <- ggplot(dd, aes(x = V1, y = V2, color = group, size = pred_length_cm)) +
   labs(size = "Predator length", shape = "Species", color = "Group", fill = "Group",
        x = "Latent variable 1", y = "Latent variable 2") +
   geom_label_repel(box.padding = 0.75, data = labs, aes(V1, V2, label = prey),
-                  color = "black", inherit.aes = FALSE, size = 2, alpha = 0.4) +
+                   color = "black", inherit.aes = FALSE, size = 2, alpha = 0.4) +
   theme_sleek() +
   coord_cartesian(xlim = c(-3, 3), ylim = c(-3, 3.5))
+
+ordi
 ```
 
 ## Make a plot of the ontogenetic development of diets

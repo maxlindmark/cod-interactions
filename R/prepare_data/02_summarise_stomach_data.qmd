@@ -63,7 +63,7 @@ d_wide <- d %>%
   pivot_wider(names_from = prey_latin_name, values_from = tot_prey_weight_g) %>% 
   mutate_all(~ifelse(is.na(.), 0, .)) %>% 
   clean_names()
-  
+
 # Now make some calculations and aggregate to some taxonomic level. Since all columns are assigned to some higher level group (or the same group), the sum of these is the total stomach content. Note that I have one group for unidentified clupeids, but also sprat and herring. So if I want the total of some aggregated group, then I need to add all the sub-groups.
 
 sort(colnames(d_wide %>% dplyr::select(-pred_id)))
@@ -198,7 +198,7 @@ unique(strange_dept$subdiv)
 dat <- d_wide3 %>% 
   dplyr::select(haul_id, X, Y, lon, lat, year, month, quarter) %>% 
   distinct(haul_id, .keep_all = TRUE) %>% 
-  mutate(month = ifelse(quarter == 1, 2, 11), # most common months
+  mutate(#month = ifelse(quarter == 1, 2, 11), # most common months: only for prediction grid
          month_year = paste(month, year, sep = "_"))
 
 dat %>% head()
@@ -580,7 +580,34 @@ unique(d_wide4$month_year)
 unique(big_dat_oxy$month_year)
 
 # Add saduria
-d_wide4 <- d_wide4 %>% left_join(dat %>% dplyr::select(X, Y, density_saduria), by = c("X", "Y"))
+d_wide4 <- left_join(d_wide4, dat %>% dplyr::select(X, Y, density_saduria) %>% distinct(X, Y, .keep_all = TRUE))
+# d_wide5 <- left_join(d_wide4, dat %>% dplyr::select(X, Y, density_saduria)) #%>% distinct(X, Y, .keep_all = TRUE))
+# 
+# dat2 <- dat %>% dplyr::select(X, Y, density_saduria)
+# 
+# dat2 %>% 
+#   group_by(X, Y) %>% 
+#   summarise(n = n()) %>% 
+#   ungroup() %>% 
+#   distinct(n)
+# 
+# 
+# d_wide4 %>% 
+#   group_by(pred_id) %>% 
+#   summarise(n = n()) %>% 
+#   distinct(n)
+# 
+# d_wide5 %>% 
+#   group_by(pred_id) %>% 
+#   summarise(n = n()) %>% 
+#   distinct(n)
+# 
+# d_wide5 %>% 
+#   group_by(pred_id) %>% 
+#   mutate(n = n()) %>% 
+#   filter(pred_id == "2015_4_COD_169") %>% 
+#   as.data.frame()
+
 
 # Add oxygen (bind_rows first)
 head(big_dat_oxy)

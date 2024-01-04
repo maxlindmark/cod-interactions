@@ -568,6 +568,11 @@ stom$pred_id <- paste(stom$year,
                       stom$sample,
                       sep = "_")
 
+# Check sample size quickly
+stom %>% 
+  group_by(quarter, predator_code) %>% 
+  summarise(n = length(unique(pred_id)))
+
 # First remove duplicate columns
 common_cols <- intersect(colnames(stom), colnames(bio_data))
 

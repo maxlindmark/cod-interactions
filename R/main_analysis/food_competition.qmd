@@ -94,6 +94,14 @@ d <- d %>%
 # ggplot(d, aes(pred_length_cm, saduria_rel_weight)) + 
 #   geom_point() + 
 #   geom_smooth(formula = y ~ poly(x, 2))
+
+d %>%
+  group_by(species) %>% 
+  summarise(n = n())
+
+d %>%
+  group_by(species, quarter) %>% 
+  summarise(n = n())
 ```
 
 ## Fit models
@@ -610,24 +618,59 @@ sad_omega <- plot_map_fc +
         legend.position = "right",
         legend.direction = "vertical",
         legend.key.width = unit(0.4, "cm"),
-        legend.key.height = unit(0.4, "cm")) +
-  ggtitle("Saduria")
+        legend.key.height = unit(0.4, "cm"))
 
-ben_omega <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Benthos"), aes(X*1000, Y*1000, color = omega_s), size = 0.9) +
+ggsave(paste0(home, "/figures/supp/omega_sad.pdf"), width = 17, height = 7, units = "cm")
+
+
+# Benthos, on different scale
+ben_omega_f <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Flounder"), aes(X*1000, Y*1000, color = omega_s), size = 0.6) +
   scale_color_gradient2() +
-  facet_wrap(~ group) +
-  labs(color = "Spatial\nrandom effect") +
+  facet_wrap(~group) +
+  labs(color = "") +
+  theme_sleek(base_size = 9) +
   theme(axis.text.x = element_text(angle = 90),
-        legend.position = "right",
-        legend.direction = "vertical",
-        legend.key.width = unit(0.4, "cm"),
-        legend.key.height = unit(0.4, "cm")) +
-  ggtitle("Benthos")
+        legend.text = element_text(size = 6),
+        legend.position = "bottom",
+        legend.key.width = unit(0.6, "cm"),
+        legend.key.height = unit(0.2, "cm"))
 
-sad_omega / ben_omega 
+ben_omega_f
 
-ggsave(paste0(home, "/figures/supp/omega.pdf"), width = 17, height = 14, units = "cm")
+ben_omega_sc <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Small cod"), aes(X*1000, Y*1000, color = omega_s), size = 0.6) +
+  scale_color_gradient2() +
+  facet_wrap(~group) +
+  labs(color = "") +
+  theme_sleek(base_size = 9) +
+  theme(axis.text.x = element_text(angle = 90),
+        legend.text = element_text(size = 6),
+        legend.position = "bottom",
+        legend.key.width = unit(0.6, "cm"),
+        legend.key.height = unit(0.2, "cm"))
+
+ben_omega_sc
+
+ben_omega_lc <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Large cod"), aes(X*1000, Y*1000, color = omega_s), size = 0.6) +
+  scale_color_gradient2() +
+  facet_wrap(~group) +
+  labs(color = "") +
+  theme_sleek(base_size = 9) +
+  theme(axis.text.x = element_text(angle = 90),
+        legend.position = "bottom",
+        legend.text = element_text(size = 6),
+        legend.key.width = unit(0.6, "cm"),
+        legend.key.height = unit(0.2, "cm"))
+
+ben_omega_lc
+
+ben_omega_f + ben_omega_sc + ben_omega_lc
+
+ggsave(paste0(home, "/figures/supp/omega_ben.pdf"), width = 17, height = 9, units = "cm")
+
+
 
 # Now total 
 plot_map_fc +
@@ -807,7 +850,7 @@ ggplot(pred_df %>% filter(model == "Saduria" & xvar == "cod" & group == "Small c
   geom_ribbon(aes(ymin = exp(est - 1.036*est_se), ymax = exp(est + 1.036*est_se)),
              alpha = 0.3, color = NA) +
   geom_line() +
-  coord_cartesian(ylim = c(0, 0.0001)) +
+  #coord_cartesian(ylim = c(0, 0.0001)) +
   facet_wrap(~group, scales = "free") +
   scale_color_brewer(palette = "Dark2") +
   scale_fill_brewer(palette = "Dark2") +
@@ -815,23 +858,23 @@ ggplot(pred_df %>% filter(model == "Saduria" & xvar == "cod" & group == "Small c
        color = "Saduria", fill = "Saduria") +
   theme(legend.position = c(0.88, 0.88))
 
-ggsave(paste0(home, "/figures/conditional_saduria_scod.pdf"), width = 11, height = 11, units = "cm")
+#ggsave(paste0(home, "/figures/conditional_saduria_scod.pdf"), width = 11, height = 11, units = "cm")
 
-ggplot(pred_df %>% filter(model == "Saduria" & xvar == "flounder"),
+ggplot(pred_df %>% filter(model == "Saduria" & xvar == "flounder" & !group == "Large cod"),
        aes(flounder_density_sc, exp(est), color = sad, fill = sad)) +
   geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
               alpha = 0.3, color = NA) +
   geom_line() +
-  facet_wrap(~group, scales = "free", ncol = 1) +
+  facet_wrap(~group, scales = "free", ncol = 2) +
   scale_color_brewer(palette = "Dark2") +
   scale_fill_brewer(palette = "Dark2") +
   coord_cartesian(xlim = c(-0.5, 0.5)) +
   labs(x = "Flounder density", y = "Relative saduria weight",
        color = "Saduria", fill = "Saduria") + 
-  theme(legend.position = c(0.88, 0.19),
+  theme(legend.position = c(0.95, 0.88),
         strip.text.x.top = element_text(angle = 0, hjust = 0))
 
-ggsave(paste0(home, "/figures/conditional_saduria_flounder.pdf"), width = 9, height = 17, units = "cm")
+ggsave(paste0(home, "/figures/conditional_saduria_flounder.pdf"), width = 17, height = 9, units = "cm")
 
 
 # # Saduria conditionals
