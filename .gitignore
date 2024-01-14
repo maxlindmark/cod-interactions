@@ -27,8 +27,10 @@ vignettes/*.pdf
 # Guides
 /R/guides/
 
-# Large data files and data we cannot share yet
-data/
+# Large data files and data we cannot share yet but not clean data for analysis
+data/*
+!data/clean/
+data/clean/ctd_trawl_joined.csv
 
 # Old text docs
 /text

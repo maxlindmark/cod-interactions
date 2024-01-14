@@ -38,7 +38,7 @@ invisible(lapply(pkgs, library, character.only = T))
 # Source map-plot
 source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
 
-# Source code for rotating ordination plot
+# Source code for rotating ordination plot (to make it work in ggplot)
 source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/rotate.R")
 
 home <- here::here()
