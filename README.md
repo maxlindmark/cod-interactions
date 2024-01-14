@@ -1,18 +1,19 @@
-# Quantifying competition between two demersal fish species from spatiotemporal stomach content data
+# Materials for "Quantifying competition between two demersal fish species from spatiotemporal stomach content data"
 
-This repo contains R code for evaluating competition between cod and flounder using diet data and spatiotemporal linear mixed-effects models using the R package [sdmTMB](https://doi.org/10.1101/2022.03.24.485545).
+This repository contains all the materials needed to reproduce the manuscript "Quantifying competition between two demersal fish species
+from spatiotemporal stomach content data" by Max Lindmark, Federico Maioli, Sean C. Anderson, Mayya Gogina, Mattias Sköld, Valerio Bartolino, Mikael Ohlsson, Anna Eklöf and Michele Casini.
 
-We use  to biomass and diet data to quantify competition between cod and flounder in the Baltic Sea.
 
-**Authors:** Max Lindmark, Federico Maioli, Sean C. Anderson, Mayya Gogina, Mattias Sköld, Valerio Bartolino, Mikael Ohlsson, Anna Eklöf, Michele Casini
 
-## How to replicate our analyses and navigate this repo
 
-`data`
-Will be made available soon
+## Setup
 
-`R`
-Contains code for analysis and data processing
+In order to reproduce the results:
 
-`figures`
-Contains figures of results
+1. Fork the repository and clone to your machine (or download a local version)
+
+2. Open R and set your working directory of the cloned repository (or just use RStudio projects)
+
+3. This project is set up with [`renv`](https://rstudio.github.io/renv/articles/renv.html) to manage package dependencies. Inside R (and with your working directory set correctly) run `renv::restore()`. This will install the correct versions of all the packages needed to replicate our results. Packages are installed in a stand-alone project library for this paper, and will not affect your installed R packages anywhere else. 
+
+Once you've successfully run `renv::restore()` you can reproduce our results by running R/main-analysis/food_competition.qmd and R/main-analysis/diet_overlap.qmd.
