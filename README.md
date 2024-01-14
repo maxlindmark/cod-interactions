@@ -8,7 +8,7 @@ from spatiotemporal stomach content data" by Max Lindmark, Federico Maioli, Sean
 
 ## Setup
 
-In order to reproduce the results:
+To simply view the analyses, download the .qmd or .html files. In order to reproduce the results:
 
 1. Fork the repository and clone to your machine (or download a local version)
 
@@ -17,3 +17,5 @@ In order to reproduce the results:
 3. This project is set up with [`renv`](https://rstudio.github.io/renv/articles/renv.html) to manage package dependencies. Inside R (and with your working directory set correctly) run `renv::restore()`. This will install the correct versions of all the packages needed to replicate our results. Packages are installed in a stand-alone project library for this paper, and will not affect your installed R packages anywhere else. 
 
 Once you've successfully run `renv::restore()` you can reproduce our results by running R/main-analysis/food_competition.qmd and R/main-analysis/diet_overlap.qmd.
+
+Scripts for data preparation are found in prepare-data. Some files (e.g., environmental data) are too big for github, so currently only the cleaned and processed data are included here, which are formatted for this specific analysis. You can either view the .html files to see how raw data were handled or reach out to me to get the data needed for the scripts to run.
