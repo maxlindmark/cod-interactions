@@ -67,15 +67,15 @@ d3 <- d2 %>%
   pivot_longer(ends_with("_tot")) %>% 
   mutate(value = value/pred_weight_g) %>% 
   filter(pred_length_cm > 10 & pred_length_cm < 50) %>% # These are the sizes we work with
+  filter(value < quantile(value, probs = 0.95)) %>% 
   group_by(species, pred_length_cm, name) %>% 
   summarise(tot_prey_weight = mean(value)) %>%
   ungroup() %>% 
   mutate(name = str_replace(name, "_", " "),
          name = str_replace(name, "_", " "),
          name = str_remove(name, " tot"),
-         name = str_to_title(name)) %>% 
-  filter(tot_prey_weight < quantile(tot_prey_weight, probs = 0.995))
-
+         name = str_to_title(name))
+  
 d_wide <- d3 %>% pivot_wider(names_from = name, values_from = tot_prey_weight)
 
 d_mat <- d_wide %>%
@@ -154,7 +154,7 @@ ordi <- ggplot(dd, aes(x = V1, y = V2, color = factor(group, levels = c("Flounde
   geom_label_repel(box.padding = 0.75, data = labs, aes(V1, V2, label = prey),
                    color = "black", inherit.aes = FALSE, size = 2, alpha = 0.4) +
   theme_sleek() +
-  coord_cartesian(xlim = c(-3, 3), ylim = c(-3, 3.5))
+  coord_cartesian(xlim = c(-2, 2.5), ylim = c(-2.5, 2))
 
 ordi
 ```

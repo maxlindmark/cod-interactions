@@ -226,6 +226,7 @@ coef_df %>%
          term = ifelse(term == "Oxygen×flounder ", "Oxygen × flounder", term),
          term = ifelse(term == " Saduria×flounder ", "Saduria × flounder", term),
          term = ifelse(term == "Small cod ×oxygen", "Small cod × oxygen", term)) %>% 
+  mutate(oxy_source = ifelse(oxy_source == "model", "Model", "CTD")) %>% 
   ggplot(aes(term, estimate, color = group, alpha = sig, shape = oxy_source)) +
   facet_wrap(~ model, ncol = 1) + 
   geom_hline(yintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +

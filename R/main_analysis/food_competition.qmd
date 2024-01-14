@@ -519,7 +519,7 @@ random_tot <- list()
   # Total model
   # NOTE: turning off spatial here due to convergence and AIC
   m_tot <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
-                    small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    large_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
                   data = dd,
                   mesh = mesh,
                   family = tweedie(),
@@ -717,6 +717,7 @@ coef_df2 <- coef_df %>%
   mutate(term = str_remove_all(term, "_sc"),
          term = str_remove_all(term, "density"),
          term = str_replace_all(term, "_", ""),
+         term = str_replace_all(term, "geco", "ge co"),
          term = str_replace_all(term, "llco", "ll co"),
          term = str_replace(term, ":", " × "),
          term = str_to_sentence(term),
@@ -876,33 +877,37 @@ ggplot(pred_df %>% filter(model == "Saduria" & xvar == "flounder" & !group == "L
 
 ggsave(paste0(home, "/figures/conditional_saduria_flounder.pdf"), width = 17, height = 9, units = "cm")
 
+# Conditional effects of oxygen and flounder for the benthos model
 
-# # Saduria conditionals
-# p1 <- ggplot(pred_df %>% filter(model == "Saduria" & xvar == "flounder"),
-#              aes(flounder_density_sc, exp(est), color = sad, fill = sad)) +
-#   geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
-#               alpha = 0.3, color = NA) +
-#   geom_line() +
-#   #coord_cartesian(ylim = c(0, 0.004)) +
-#   facet_wrap(~group, scales = "free") +
-#   scale_color_brewer(palette = "Dark2") +
-#   scale_fill_brewer(palette = "Dark2") +
-#   labs(x = "Flounder density", y = "Relative saduria weight",
-#        color = "Saduria", fill = "Saduria")
-# 
-# p2 <- ggplot(pred_df %>% filter(model == "Saduria" & xvar == "cod"),
-#              aes(small_cod_density_sc, exp(est), color = sad, fill = sad)) +
-#   geom_ribbon(aes(ymin = exp(est - 1.036*est_se), ymax = exp(est + 1.036*est_se)),
-#               alpha = 0.3, color = NA) +
-#   geom_line() +
-#   #coord_cartesian(ylim = c(0, 0.004)) +
-#   facet_wrap(~group, scales = "free") +
-#   scale_color_brewer(palette = "Dark2") +
-#   scale_fill_brewer(palette = "Dark2") +
-#   labs(x = "Small cod density", y = "Relative saduria weight",
-#        color = "Saduria", fill = "Saduria")
-# 
-# p1 / p2 + plot_layout(guides = "collect")
+  nd_flounder_oxy <- data.frame(expand_grid(
+    oxygen_sc = c(quantile(d$oxygen_sc, probs = 0.05),
+                  quantile(d$oxygen_sc, probs = 0.95)),
+    flounder_density_sc = seq(quantile(dd$flounder_density_sc, probs = 0.05),
+                              quantile(dd$flounder_density_sc, probs = 0.95),
+                              length.out = 50))) %>%
+    mutate(year = 2020,
+           fyear = as.factor(2020),
+           fquarter = as.factor(1),
+           density_saduria_sc = 0, 
+           depth_sc = 0,
+           small_cod_density_sc = 0,
+           fhaul_id = as.factor("2020_1_81")) # TODO: why do I need this when I specify re_form_iid!?
+
+  preds_flounder_oxy_ben <- predict(m_ben, newdata = nd_flounder_oxy, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+
+  
+  ggplot(preds_flounder_oxy_ben, aes(flounder_density_sc, exp(est), color = factor(round(oxygen_sc)), fill = factor(round(oxygen_sc)))) +
+    geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
+                alpha = 0.3, color = NA) +
+    geom_line() +
+    #facet_wrap(~group, scales = "free", ncol = 2) +
+    scale_color_brewer(palette = "Dark2") +
+    scale_fill_brewer(palette = "Dark2") +
+    coord_cartesian(xlim = c(-0.5, 0.5)) +
+    labs(x = "Flounder density", y = "Relative saduria weight",
+         color = "Oxygen", fill = "Oxygen") + 
+    theme(legend.position = c(0.95, 0.88),
+          strip.text.x.top = element_text(angle = 0, hjust = 0))
 ```
 
 ```{r}
