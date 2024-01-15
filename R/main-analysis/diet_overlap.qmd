@@ -23,17 +23,17 @@ execute:
 #| message: false
 #| warning: false
 
-# Load libraries, install if needed
-pkgs <- c("tidyverse", "tidylog", "RCurl", "gllvm", "RColorBrewer", "ggrepel", "vegan",
-          "patchwork", "RCurl", "devtools")
-
-if(length(setdiff(pkgs, rownames(installed.packages()))) > 0){
-
-    install.packages(setdiff(pkgs, rownames(installed.packages())), dependencies = T)
-
-}
-
-invisible(lapply(pkgs, library, character.only = T))
+# Load libraries
+library(tidyverse)
+library(tidylog)
+library(RCurl)
+library(gllvm)
+library(RColorBrewer)
+library(ggrepel)
+library(vegan)
+library(patchwork)
+library(RCurl)
+library(devtools)
 
 # Source map-plot
 source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")

@@ -28,16 +28,18 @@ Here I will try and join CTD data to trawl data using the *new* key `smhi_serial
 #| message: false
 #| warning: false
 
-# Load libraries, install if needed
-pkgs <- c("plyr", "tidyverse", "readxl", "tidylog", "RCurl", "janitor", "patchwork", "devtools", "viridis", "nngeo", "conflicted") 
-
-if(length(setdiff(pkgs, rownames(installed.packages()))) > 0){
-
-    install.packages(setdiff(pkgs, rownames(installed.packages())), dependencies = T)
-  
-}
-
-invisible(lapply(pkgs, library, character.only = T))
+# Load libraries
+library(plyr)
+library(tidyverse)
+library(readxl)
+library(tidylog)
+library(RCurl)
+library(janitor)
+library(patchwork)
+library(devtools)
+library(viridis)
+library(nngeo)
+library(conflicted)
 
 # Source code for map plots
 source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
