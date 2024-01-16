@@ -52,6 +52,28 @@
       ],
       "Hash": "ffebef4763cbacec396d5f841b391739"
     },
+    "INLA": {
+      "Package": "INLA",
+      "Version": "23.09.09",
+      "Source": "unknown",
+      "Requirements": [
+        "Matrix",
+        "R",
+        "fmesher",
+        "grDevices",
+        "graphics",
+        "lifecycle",
+        "methods",
+        "parallel",
+        "rlang",
+        "sp",
+        "splines",
+        "stats",
+        "utils",
+        "withr"
+      ],
+      "Hash": "677bafc30f91ff926febf5888993aefb"
+    },
     "KernSmooth": {
       "Package": "KernSmooth",
       "Version": "2.23-20",
@@ -916,6 +938,30 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "783e129ea0b15bfe3ac8a96c813c0a97"
+    },
+    "fmesher": {
+      "Package": "fmesher",
+      "Version": "0.1.5",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "Matrix",
+        "R",
+        "Rcpp",
+        "dplyr",
+        "grDevices",
+        "graphics",
+        "lifecycle",
+        "methods",
+        "rlang",
+        "sf",
+        "sp",
+        "stats",
+        "tibble",
+        "utils",
+        "withr"
+      ],
+      "Hash": "1a17fd329f35105afbe772be0380d3c8"
     },
     "fontawesome": {
       "Package": "fontawesome",
@@ -2998,9 +3044,9 @@
     },
     "sp": {
       "Package": "sp",
-      "Version": "1.6-0",
+      "Version": "2.1-2",
       "Source": "Repository",
-      "Repository": "CRAN",
+      "Repository": "RSPM",
       "Requirements": [
         "R",
         "grDevices",
@@ -3011,7 +3057,7 @@
         "stats",
         "utils"
       ],
-      "Hash": "6674e075a078d9c3bde8ba800367347c"
+      "Hash": "40a9887191d33b2521a1d741f8c8aea2"
     },
     "statmod": {
       "Package": "statmod",
