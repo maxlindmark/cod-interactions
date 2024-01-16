@@ -23,7 +23,9 @@ execute:
 #| message: false
 #| warning: false
 
-# Load libraries
+renv::install("INLA",repos=c(getOption("repos"),INLA="https://inla.r-inla-download.org/R/stable"), dep=TRUE) 
+library(INLA)
+
 library(tidyverse)
 library(tidylog)
 library(RCurl)
@@ -36,7 +38,8 @@ library(ggh4x)
 library(sdmTMBextra)
 
 # Source map-plot
-source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+#source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+source("R/functions/map-plot.R")
 
 home <- here::here()
 ```
@@ -337,6 +340,8 @@ res_sad <- list()
 res_ben <- list()
 random_sad <- list()
 random_ben <- list()
+range_sad <- list()
+range_ben <- list()
 
 for(i in unique(d$group)) {
   
@@ -376,8 +381,6 @@ for(i in unique(d$group)) {
     
   res_sad[[i]] <- dd
   
-  
-  
   # Benthic model
   m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
                     small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
@@ -399,6 +402,10 @@ for(i in unique(d$group)) {
   res_ben[[i]] <- dd
   
 
+  # Ranges
+  range_sad[[i]] <- tidy(m_sad, effects = "ran_pars") %>% filter(term == "range") %>% mutate(group = i, model = "saduria")
+  range_ben[[i]] <- tidy(m_ben, effects = "ran_pars") %>% filter(term == "range") %>% mutate(group = i, model = "benthos")
+  
   
   # Conditional effects: flounder
   nd_flounder <- data.frame(expand_grid(
@@ -503,6 +510,7 @@ pred_cod_tot <- list()
 coef_tot <- list()
 res_tot <- list()
 random_tot <- list()
+range_tot <- list()
 
 
   dd <- filter(d, group == "large cod")
@@ -532,6 +540,9 @@ random_tot <- list()
     
   res_tot <- dd
   
+  # Range
+  range_tot[[i]] <- tidy(m_tot, effects = "ran_pars") %>% filter(term == "range") %>% mutate(group = i, model = "total")
+
   
   # Conditional effects: flounder
   # preds_flounder_tot <- predict(m_tot, newdata = nd_flounder, re_form = NA, re_form_iid = NA, se_fit = TRUE)
@@ -596,6 +607,8 @@ random_df <- bind_rows(bind_rows(random_sad) %>% mutate(model = "Saduria"),
                        bind_rows(random_ben) %>% mutate(model = "Benthos"))
 
 random_df <- random_df %>% bind_rows(preds_tot %>% mutate(model = "Total"))
+
+range_df <- bind_rows(bind_rows(range_tot), bind_rows(range_ben), bind_rows(range_sad))
 ```
 
 ## Plot spatial random effects
@@ -681,6 +694,26 @@ plot_map_fc +
 
 ggsave(paste0(home, "/figures/supp/omega_tot.pdf"), width = 11, height = 9, units = "cm")
 ```
+
+## Plot range
+
+```{r}
+pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
+
+range_df %>% 
+  mutate(group = str_to_sentence(group),
+         model = str_to_sentence(model)) %>% 
+  ggplot(aes(model, estimate, color = group)) + 
+  geom_point(size = 2) +
+  geom_hline(yintercept = 15, linetype = 2, alpha = 0.5) +
+  scale_color_manual(values = pal) + 
+  labs(x = "Prey group", y = "Range (km)", color = "Group") + 
+  theme(aspect.ratio = 1,
+        legend.position = c(0.86, 0.86)) 
+
+ggsave(paste0(home, "/figures/supp/ranges.pdf"), width = 11, height = 11, units = "cm")
+```
+
 
 ## Plot residuals
 
@@ -904,6 +937,55 @@ ggsave(paste0(home, "/figures/conditional_saduria_flounder.pdf"), width = 17, he
     theme(legend.position = c(0.95, 0.88),
           strip.text.x.top = element_text(angle = 0, hjust = 0))
 ```
+
+Showing conditional effects of oxygeon on small cod feeding on benthos
+
+```{r}
+
+  dd <- filter(d, group == "small cod")
+  
+  mesh <- make_mesh(dd,
+                    xy_cols = c("X", "Y"),
+                    cutoff = 15)
+
+  # Benthic model
+  m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+                    small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                  data = dd,
+                  mesh = mesh,
+                  family = tweedie(),
+                  spatiotemporal = "IID", 
+                  spatial = "on",
+                  time = "year")
+
+  nd <- data.frame(oxygen = seq(quantile(d$oxygen, probs = 0.05), quantile(d$oxygen, probs = 0.95),
+                                length.out = 50)) %>%
+    mutate(year = 2020,
+           fyear = as.factor(2020),
+           fquarter = as.factor(1),
+           density_saduria_sc = 0,
+           flounder_density_sc = 0, 
+           depth_sc = 0,
+           small_cod_density_sc = 0,
+           fhaul_id = as.factor("2020_1_81")) %>% 
+    mutate(oxygen_sc = (oxygen - mean(d$oxygen)) / sd(d$oxygen)) 
+  
+  
+  p <- predict(m_ben, newdata = nd, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+  
+  ggplot(p, aes(oxygen, exp(est))) + 
+    geom_line() + 
+    theme_sleek(base_size = 14) + 
+    geom_hline(yintercept = 0.002, col = "red") +
+    geom_hline(yintercept = 0.004, col = "red") +
+    geom_vline(xintercept = 3.5, col = "red") +
+    geom_vline(xintercept = 7.5, col = "red") + 
+    NULL
+    
+  
+    
+```
+
 
 ```{r}
 knitr::knit_exit()
