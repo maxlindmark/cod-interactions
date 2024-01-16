@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Max Lindmark">
-<meta name="dcterms.date" content="2023-12-11">
+<meta name="dcterms.date" content="2024-01-15">
 
 <title>Collate stomach content data</title>
 <style>
@@ -3084,7 +3084,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">December 11, 2023</p>
+      <p class="date">January 15, 2024</p>
     </div>
   </div>
   
@@ -3099,17 +3099,17 @@ vertical-align: -.125em;
 <section id="load-packages" class="level2">
 <h2 class="anchored" data-anchor-id="load-packages">Load packages</h2>
 <div class="cell" data-layout-align="center">
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Load libraries, install if needed</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>pkgs <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">&quot;tidyverse&quot;</span>, <span class="st">&quot;readxl&quot;</span>, <span class="st">&quot;tidylog&quot;</span>, <span class="st">&quot;RCurl&quot;</span>, <span class="st">&quot;janitor&quot;</span>, <span class="st">&quot;mapplots&quot;</span>, <span class="st">&quot;ggridges&quot;</span>, </span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>          <span class="st">&quot;icesDatras&quot;</span>, <span class="st">&quot;raster&quot;</span>, <span class="st">&quot;devtools&quot;</span>) </span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span>(<span class="fu">length</span>(<span class="fu">setdiff</span>(pkgs, <span class="fu">rownames</span>(<span class="fu">installed.packages</span>()))) <span class="sc">&gt;</span> <span class="dv">0</span>){</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">install.packages</span>(<span class="fu">setdiff</span>(pkgs, <span class="fu">rownames</span>(<span class="fu">installed.packages</span>())), <span class="at">dependencies =</span> T)</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  </span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="fu">invisible</span>(<span class="fu">lapply</span>(pkgs, library, <span class="at">character.only =</span> T))</span>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Load libraries</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(readxl)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidylog)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(RCurl)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(janitor)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(mapplots)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggridges)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(icesDatras)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(raster)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(devtools)</span>
 <span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Source code for map plots</span></span>
 <span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="fu">source_url</span>(<span class="st">&quot;https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R&quot;</span>)</span>
@@ -4948,11 +4948,31 @@ date  (1): Date
 <span id="cb215-4"><a href="#cb215-4" aria-hidden="true" tabindex="-1"></a>                      stom<span class="sc">$</span>sample,</span>
 <span id="cb215-5"><a href="#cb215-5" aria-hidden="true" tabindex="-1"></a>                      <span class="at">sep =</span> <span class="st">&quot;_&quot;</span>)</span>
 <span id="cb215-6"><a href="#cb215-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb215-7"><a href="#cb215-7" aria-hidden="true" tabindex="-1"></a><span class="co"># First remove duplicate columns</span></span>
-<span id="cb215-8"><a href="#cb215-8" aria-hidden="true" tabindex="-1"></a>common_cols <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">colnames</span>(stom), <span class="fu">colnames</span>(bio_data))</span>
-<span id="cb215-9"><a href="#cb215-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb215-10"><a href="#cb215-10" aria-hidden="true" tabindex="-1"></a><span class="co"># And check if there are any NA&#39;s...</span></span>
-<span id="cb215-11"><a href="#cb215-11" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(stom[, common_cols]))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb215-7"><a href="#cb215-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Check sample size quickly</span></span>
+<span id="cb215-8"><a href="#cb215-8" aria-hidden="true" tabindex="-1"></a>stom <span class="sc">%&gt;%</span> </span>
+<span id="cb215-9"><a href="#cb215-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(quarter, predator_code) <span class="sc">%&gt;%</span> </span>
+<span id="cb215-10"><a href="#cb215-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">n =</span> <span class="fu">length</span>(<span class="fu">unique</span>(pred_id)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>group_by: 2 grouping variables (quarter, predator_code)</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>summarise: now 4 rows and 3 columns, one group variable remaining (quarter)</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 4 × 3
+# Groups:   quarter [2]
+  quarter predator_code     n
+    &lt;dbl&gt; &lt;chr&gt;         &lt;int&gt;
+1       1 COD            3387
+2       1 FLE            2108
+3       4 COD            2457
+4       4 FLE            1808</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb219"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb219-1"><a href="#cb219-1" aria-hidden="true" tabindex="-1"></a><span class="co"># First remove duplicate columns</span></span>
+<span id="cb219-2"><a href="#cb219-2" aria-hidden="true" tabindex="-1"></a>common_cols <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">colnames</span>(stom), <span class="fu">colnames</span>(bio_data))</span>
+<span id="cb219-3"><a href="#cb219-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb219-4"><a href="#cb219-4" aria-hidden="true" tabindex="-1"></a><span class="co"># And check if there are any NA&#39;s...</span></span>
+<span id="cb219-5"><a href="#cb219-5" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(stom[, common_cols]))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>       year month quarter predator_code   age   sex maturity sample pred_id
  [1,] FALSE FALSE   FALSE         FALSE  TRUE  TRUE     TRUE  FALSE   FALSE
@@ -4965,7 +4985,7 @@ date  (1): Date
  [8,] FALSE FALSE   FALSE         FALSE FALSE  TRUE    FALSE  FALSE   FALSE
  [9,] FALSE FALSE   FALSE         FALSE  TRUE  TRUE    FALSE  FALSE   FALSE</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb217"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb217-1"><a href="#cb217-1" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(bio_data[, common_cols]))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb221"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb221-1"><a href="#cb221-1" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(bio_data[, common_cols]))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>      year month quarter predator_code   age   sex maturity sample pred_id
 [1,] FALSE FALSE   FALSE         FALSE FALSE  TRUE     TRUE  FALSE   FALSE
@@ -4977,14 +4997,14 @@ date  (1): Date
 [7,] FALSE FALSE   FALSE         FALSE  TRUE  TRUE    FALSE  FALSE   FALSE
 [8,] FALSE FALSE   FALSE         FALSE FALSE FALSE     TRUE  FALSE   FALSE</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb219"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb219-1"><a href="#cb219-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Join!</span></span>
-<span id="cb219-2"><a href="#cb219-2" aria-hidden="true" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">left_join</span>(stom <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="st">&quot;pred_id&quot;</span>, <span class="st">&quot;data_id&quot;</span>, <span class="st">&quot;pred_weight&quot;</span>, <span class="st">&quot;pred_weight_g&quot;</span>, <span class="st">&quot;pred_size&quot;</span>, <span class="st">&quot;pred_size_cm&quot;</span>,</span>
-<span id="cb219-3"><a href="#cb219-3" aria-hidden="true" tabindex="-1"></a>                                        <span class="st">&quot;gall_bladder&quot;</span>, <span class="st">&quot;stomach_state&quot;</span>, <span class="st">&quot;predator_code&quot;</span>, <span class="st">&quot;prey_weight&quot;</span>,</span>
-<span id="cb219-4"><a href="#cb219-4" aria-hidden="true" tabindex="-1"></a>                                        <span class="st">&quot;prey_nr&quot;</span>, <span class="st">&quot;stage_digestion&quot;</span>, <span class="st">&quot;comment&quot;</span>, <span class="st">&quot;prey_size&quot;</span>, <span class="st">&quot;prey_sp_code&quot;</span>, <span class="st">&quot;length_code&quot;</span>, </span>
-<span id="cb219-5"><a href="#cb219-5" aria-hidden="true" tabindex="-1"></a>                                        <span class="st">&quot;n_empty&quot;</span>, <span class="st">&quot;n_with_food&quot;</span>, <span class="st">&quot;n_regurgitated&quot;</span>),</span>
-<span id="cb219-6"><a href="#cb219-6" aria-hidden="true" tabindex="-1"></a>                 bio_data <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="st">&quot;haul_id&quot;</span>, <span class="st">&quot;fle_kg_km2&quot;</span>, <span class="st">&quot;mcod_kg_km2&quot;</span>, <span class="st">&quot;scod_kg_km2&quot;</span>, <span class="st">&quot;year&quot;</span>, <span class="st">&quot;quarter&quot;</span>, </span>
-<span id="cb219-7"><a href="#cb219-7" aria-hidden="true" tabindex="-1"></a>                                            <span class="st">&quot;lat&quot;</span>, <span class="st">&quot;lon&quot;</span>, <span class="st">&quot;bottom_depth&quot;</span>, <span class="st">&quot;pred_id&quot;</span>, <span class="st">&quot;species&quot;</span>, <span class="st">&quot;lengthcl&quot;</span>,</span>
-<span id="cb219-8"><a href="#cb219-8" aria-hidden="true" tabindex="-1"></a>                                            <span class="st">&quot;weight&quot;</span>, <span class="st">&quot;size&quot;</span>, <span class="st">&quot;subdiv&quot;</span>, <span class="st">&quot;date&quot;</span>, <span class="st">&quot;month&quot;</span>, <span class="st">&quot;X&quot;</span>, <span class="st">&quot;Y&quot;</span>, <span class="st">&quot;smhi_serial_no&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb223"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb223-1"><a href="#cb223-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Join!</span></span>
+<span id="cb223-2"><a href="#cb223-2" aria-hidden="true" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">left_join</span>(stom <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="st">&quot;pred_id&quot;</span>, <span class="st">&quot;data_id&quot;</span>, <span class="st">&quot;pred_weight&quot;</span>, <span class="st">&quot;pred_weight_g&quot;</span>, <span class="st">&quot;pred_size&quot;</span>, <span class="st">&quot;pred_size_cm&quot;</span>,</span>
+<span id="cb223-3"><a href="#cb223-3" aria-hidden="true" tabindex="-1"></a>                                        <span class="st">&quot;gall_bladder&quot;</span>, <span class="st">&quot;stomach_state&quot;</span>, <span class="st">&quot;predator_code&quot;</span>, <span class="st">&quot;prey_weight&quot;</span>,</span>
+<span id="cb223-4"><a href="#cb223-4" aria-hidden="true" tabindex="-1"></a>                                        <span class="st">&quot;prey_nr&quot;</span>, <span class="st">&quot;stage_digestion&quot;</span>, <span class="st">&quot;comment&quot;</span>, <span class="st">&quot;prey_size&quot;</span>, <span class="st">&quot;prey_sp_code&quot;</span>, <span class="st">&quot;length_code&quot;</span>, </span>
+<span id="cb223-5"><a href="#cb223-5" aria-hidden="true" tabindex="-1"></a>                                        <span class="st">&quot;n_empty&quot;</span>, <span class="st">&quot;n_with_food&quot;</span>, <span class="st">&quot;n_regurgitated&quot;</span>),</span>
+<span id="cb223-6"><a href="#cb223-6" aria-hidden="true" tabindex="-1"></a>                 bio_data <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="st">&quot;haul_id&quot;</span>, <span class="st">&quot;fle_kg_km2&quot;</span>, <span class="st">&quot;mcod_kg_km2&quot;</span>, <span class="st">&quot;scod_kg_km2&quot;</span>, <span class="st">&quot;year&quot;</span>, <span class="st">&quot;quarter&quot;</span>, </span>
+<span id="cb223-7"><a href="#cb223-7" aria-hidden="true" tabindex="-1"></a>                                            <span class="st">&quot;lat&quot;</span>, <span class="st">&quot;lon&quot;</span>, <span class="st">&quot;bottom_depth&quot;</span>, <span class="st">&quot;pred_id&quot;</span>, <span class="st">&quot;species&quot;</span>, <span class="st">&quot;lengthcl&quot;</span>,</span>
+<span id="cb223-8"><a href="#cb223-8" aria-hidden="true" tabindex="-1"></a>                                            <span class="st">&quot;weight&quot;</span>, <span class="st">&quot;size&quot;</span>, <span class="st">&quot;subdiv&quot;</span>, <span class="st">&quot;date&quot;</span>, <span class="st">&quot;month&quot;</span>, <span class="st">&quot;X&quot;</span>, <span class="st">&quot;Y&quot;</span>, <span class="st">&quot;smhi_serial_no&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>Joining with `by = join_by(pred_id)`</code></pre>
 </div>
@@ -5006,26 +5026,26 @@ date  (1): Date
 <div class="cell-output cell-output-stderr">
 <pre><code>           &gt; rows total       23,982</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb227"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb227-1"><a href="#cb227-1" aria-hidden="true" tabindex="-1"></a><span class="fu">length</span>(<span class="fu">unique</span>(dat<span class="sc">$</span>pred_id))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb231"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb231-1"><a href="#cb231-1" aria-hidden="true" tabindex="-1"></a><span class="fu">length</span>(<span class="fu">unique</span>(dat<span class="sc">$</span>pred_id))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 9760</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb229"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb229-1"><a href="#cb229-1" aria-hidden="true" tabindex="-1"></a><span class="fu">length</span>(<span class="fu">unique</span>(stom<span class="sc">$</span>pred_id))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb233"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb233-1"><a href="#cb233-1" aria-hidden="true" tabindex="-1"></a><span class="fu">length</span>(<span class="fu">unique</span>(stom<span class="sc">$</span>pred_id))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 9760</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb231"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb231-1"><a href="#cb231-1" aria-hidden="true" tabindex="-1"></a><span class="fu">length</span>(<span class="fu">unique</span>(<span class="fu">filter</span>(stom, pred_id <span class="sc">%in%</span> bio_data<span class="sc">$</span>pred_id)<span class="sc">$</span>pred_id))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb235"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb235-1"><a href="#cb235-1" aria-hidden="true" tabindex="-1"></a><span class="fu">length</span>(<span class="fu">unique</span>(<span class="fu">filter</span>(stom, pred_id <span class="sc">%in%</span> bio_data<span class="sc">$</span>pred_id)<span class="sc">$</span>pred_id))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 118 rows (&lt;1%), 23,864 rows remaining</code></pre>
 </div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 9714</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb234"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb234-1"><a href="#cb234-1" aria-hidden="true" tabindex="-1"></a>missing_ids <span class="ot">&lt;-</span> stom <span class="sc">%&gt;%</span> <span class="fu">filter</span>(<span class="sc">!</span>pred_id <span class="sc">%in%</span> bio_data<span class="sc">$</span>pred_id)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb238"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb238-1"><a href="#cb238-1" aria-hidden="true" tabindex="-1"></a>missing_ids <span class="ot">&lt;-</span> stom <span class="sc">%&gt;%</span> <span class="fu">filter</span>(<span class="sc">!</span>pred_id <span class="sc">%in%</span> bio_data<span class="sc">$</span>pred_id)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 23,864 rows (&gt;99%), 118 rows remaining</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb236"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb236-1"><a href="#cb236-1" aria-hidden="true" tabindex="-1"></a>missing_ids<span class="sc">$</span>pred_id</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb240"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb240-1"><a href="#cb240-1" aria-hidden="true" tabindex="-1"></a>missing_ids<span class="sc">$</span>pred_id</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>  [1] &quot;2015_4_FLE_229&quot;  &quot;2015_4_FLE_229&quot;  &quot;2015_4_FLE_229&quot;  &quot;2015_4_FLE_224&quot; 
   [5] &quot;2015_4_FLE_224&quot;  &quot;2015_4_FLE_224&quot;  &quot;2015_4_FLE_224&quot;  &quot;2015_4_FLE_228&quot; 
@@ -5058,12 +5078,12 @@ date  (1): Date
 [113] &quot;2018_1_COD_425a&quot; &quot;2018_1_COD_130a&quot; &quot;2018_1_COD_130a&quot; &quot;2018_1_COD_130a&quot;
 [117] &quot;2018_1_COD_249a&quot; &quot;2018_1_COD_249a&quot;</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb238"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb238-1"><a href="#cb238-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Weird characters make not all data matchable across the biological and stomach data sets. Drop these...</span></span>
-<span id="cb238-2"><a href="#cb238-2" aria-hidden="true" tabindex="-1"></a>dat <span class="ot">&lt;-</span> dat <span class="sc">%&gt;%</span> <span class="fu">filter</span>(pred_id <span class="sc">%in%</span> <span class="fu">c</span>(bio_data<span class="sc">$</span>pred_id))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb242"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb242-1"><a href="#cb242-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Weird characters make not all data matchable across the biological and stomach data sets. Drop these...</span></span>
+<span id="cb242-2"><a href="#cb242-2" aria-hidden="true" tabindex="-1"></a>dat <span class="ot">&lt;-</span> dat <span class="sc">%&gt;%</span> <span class="fu">filter</span>(pred_id <span class="sc">%in%</span> <span class="fu">c</span>(bio_data<span class="sc">$</span>pred_id))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 118 rows (&lt;1%), 23,864 rows remaining</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb240"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb240-1"><a href="#cb240-1" aria-hidden="true" tabindex="-1"></a><span class="fu">names</span>(dat)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb244"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb244-1"><a href="#cb244-1" aria-hidden="true" tabindex="-1"></a><span class="fu">names</span>(dat)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code> [1] &quot;pred_id&quot;         &quot;data_id&quot;         &quot;pred_weight&quot;     &quot;pred_weight_g&quot;  
  [5] &quot;pred_size&quot;       &quot;pred_size_cm&quot;    &quot;gall_bladder&quot;    &quot;stomach_state&quot;  
@@ -5079,31 +5099,31 @@ date  (1): Date
 </div>
 <p>Clean data!</p>
 <div class="cell" data-layout-align="center">
-<div class="sourceCode cell-code" id="cb242"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb242-1"><a href="#cb242-1" aria-hidden="true" tabindex="-1"></a>d <span class="ot">&lt;-</span> dat</span>
-<span id="cb242-2"><a href="#cb242-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb242-3"><a href="#cb242-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Scale up so 1 row = 1 pred and prey. Assume NA is 1. Remove 0 prey nr...</span></span>
-<span id="cb242-4"><a href="#cb242-4" aria-hidden="true" tabindex="-1"></a>d <span class="ot">&lt;-</span> d <span class="sc">%&gt;%</span></span>
-<span id="cb242-5"><a href="#cb242-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">prey_nr =</span> <span class="fu">replace_na</span>(prey_nr, <span class="dv">1</span>),</span>
-<span id="cb242-6"><a href="#cb242-6" aria-hidden="true" tabindex="-1"></a>         <span class="at">prey_nr =</span> <span class="fu">as.integer</span>(prey_nr)) <span class="sc">%&gt;%</span> </span>
-<span id="cb242-7"><a href="#cb242-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_nr <span class="sc">&gt;</span> <span class="dv">0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb246"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb246-1"><a href="#cb246-1" aria-hidden="true" tabindex="-1"></a>d <span class="ot">&lt;-</span> dat</span>
+<span id="cb246-2"><a href="#cb246-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb246-3"><a href="#cb246-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Scale up so 1 row = 1 pred and prey. Assume NA is 1. Remove 0 prey nr...</span></span>
+<span id="cb246-4"><a href="#cb246-4" aria-hidden="true" tabindex="-1"></a>d <span class="ot">&lt;-</span> d <span class="sc">%&gt;%</span></span>
+<span id="cb246-5"><a href="#cb246-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">prey_nr =</span> <span class="fu">replace_na</span>(prey_nr, <span class="dv">1</span>),</span>
+<span id="cb246-6"><a href="#cb246-6" aria-hidden="true" tabindex="-1"></a>         <span class="at">prey_nr =</span> <span class="fu">as.integer</span>(prey_nr)) <span class="sc">%&gt;%</span> </span>
+<span id="cb246-7"><a href="#cb246-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_nr <span class="sc">&gt;</span> <span class="dv">0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>mutate: converted &#39;prey_nr&#39; from double to integer (6024 fewer NA)</code></pre>
 </div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 8 rows (&lt;1%), 23,856 rows remaining</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb245"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb245-1"><a href="#cb245-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Replicate rows prey_no times!</span></span>
-<span id="cb245-2"><a href="#cb245-2" aria-hidden="true" tabindex="-1"></a><span class="fu">nrow</span>(d)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb249"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb249-1"><a href="#cb249-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Replicate rows prey_no times!</span></span>
+<span id="cb249-2"><a href="#cb249-2" aria-hidden="true" tabindex="-1"></a><span class="fu">nrow</span>(d)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 23856</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb247"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb247-1"><a href="#cb247-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d <span class="sc">%&gt;%</span></span>
-<span id="cb247-2"><a href="#cb247-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">prey_weight_g =</span> prey_weight,</span>
-<span id="cb247-3"><a href="#cb247-3" aria-hidden="true" tabindex="-1"></a>         <span class="at">prey_length_cm =</span> prey_size) <span class="sc">%&gt;%</span> </span>
-<span id="cb247-4"><a href="#cb247-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">prey_weight_g =</span> prey_weight_g <span class="sc">/</span> prey_nr,</span>
-<span id="cb247-5"><a href="#cb247-5" aria-hidden="true" tabindex="-1"></a>         <span class="at">prey_number_type =</span> <span class="fu">ifelse</span>(prey_nr <span class="sc">&gt;</span> <span class="dv">1</span>, <span class="st">&quot;un_aggregated_from_average&quot;</span>, <span class="st">&quot;unique_id&quot;</span>),</span>
-<span id="cb247-6"><a href="#cb247-6" aria-hidden="true" tabindex="-1"></a>         <span class="at">prey_weight_type =</span> <span class="fu">ifelse</span>(prey_number_type <span class="sc">==</span> <span class="st">&quot;un_aggregated_from_average&quot;</span>, <span class="st">&quot;pooled&quot;</span>, <span class="st">&quot;unique_id&quot;</span>)) <span class="sc">%&gt;%</span> </span>
-<span id="cb247-7"><a href="#cb247-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">uncount</span>(prey_nr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb251"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb251-1"><a href="#cb251-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d <span class="sc">%&gt;%</span></span>
+<span id="cb251-2"><a href="#cb251-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">prey_weight_g =</span> prey_weight,</span>
+<span id="cb251-3"><a href="#cb251-3" aria-hidden="true" tabindex="-1"></a>         <span class="at">prey_length_cm =</span> prey_size) <span class="sc">%&gt;%</span> </span>
+<span id="cb251-4"><a href="#cb251-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">prey_weight_g =</span> prey_weight_g <span class="sc">/</span> prey_nr,</span>
+<span id="cb251-5"><a href="#cb251-5" aria-hidden="true" tabindex="-1"></a>         <span class="at">prey_number_type =</span> <span class="fu">ifelse</span>(prey_nr <span class="sc">&gt;</span> <span class="dv">1</span>, <span class="st">&quot;un_aggregated_from_average&quot;</span>, <span class="st">&quot;unique_id&quot;</span>),</span>
+<span id="cb251-6"><a href="#cb251-6" aria-hidden="true" tabindex="-1"></a>         <span class="at">prey_weight_type =</span> <span class="fu">ifelse</span>(prey_number_type <span class="sc">==</span> <span class="st">&quot;un_aggregated_from_average&quot;</span>, <span class="st">&quot;pooled&quot;</span>, <span class="st">&quot;unique_id&quot;</span>)) <span class="sc">%&gt;%</span> </span>
+<span id="cb251-7"><a href="#cb251-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">uncount</span>(prey_nr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>rename: renamed 2 variables (prey_weight_g, prey_length_cm)</code></pre>
 </div>
@@ -5119,16 +5139,16 @@ date  (1): Date
 <div class="cell-output cell-output-stderr">
 <pre><code>uncount: now 91,576 rows and 39 columns, ungrouped</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb253"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb253-1"><a href="#cb253-1" aria-hidden="true" tabindex="-1"></a><span class="fu">nrow</span>(d2)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb257"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb257-1"><a href="#cb257-1" aria-hidden="true" tabindex="-1"></a><span class="fu">nrow</span>(d2)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] 91576</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb255"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb255-1"><a href="#cb255-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Now we can plot prop empty stomachs. It seems NA prey weight can be both that the weight is missing, and that there is no prey</span></span>
-<span id="cb255-2"><a href="#cb255-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
-<span id="cb255-3"><a href="#cb255-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">is.na</span>(prey_weight_g)) <span class="sc">%&gt;%</span></span>
-<span id="cb255-4"><a href="#cb255-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(prey_sp_code) <span class="sc">%&gt;%</span> </span>
-<span id="cb255-5"><a href="#cb255-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(prey_sp_code) <span class="sc">%&gt;%</span> </span>
-<span id="cb255-6"><a href="#cb255-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb259"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb259-1"><a href="#cb259-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Now we can plot prop empty stomachs. It seems NA prey weight can be both that the weight is missing, and that there is no prey</span></span>
+<span id="cb259-2"><a href="#cb259-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
+<span id="cb259-3"><a href="#cb259-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">is.na</span>(prey_weight_g)) <span class="sc">%&gt;%</span></span>
+<span id="cb259-4"><a href="#cb259-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(prey_sp_code) <span class="sc">%&gt;%</span> </span>
+<span id="cb259-5"><a href="#cb259-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(prey_sp_code) <span class="sc">%&gt;%</span> </span>
+<span id="cb259-6"><a href="#cb259-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 88,737 rows (97%), 2,839 rows remaining</code></pre>
 </div>
@@ -5165,13 +5185,13 @@ date  (1): Date
 26                 scales
 27                   &lt;NA&gt;</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb259"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb259-1"><a href="#cb259-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Most NA prey weights are though also associated with NA prey sp</span></span>
-<span id="cb259-2"><a href="#cb259-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
-<span id="cb259-3"><a href="#cb259-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">is.na</span>(prey_weight_g)) <span class="sc">%&gt;%</span></span>
-<span id="cb259-4"><a href="#cb259-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb259-5"><a href="#cb259-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(prey_sp_code)) <span class="sc">+</span> </span>
-<span id="cb259-6"><a href="#cb259-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="at">stat =</span> <span class="st">&quot;count&quot;</span>) <span class="sc">+</span></span>
-<span id="cb259-7"><a href="#cb259-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle =</span> <span class="dv">90</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb263"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb263-1"><a href="#cb263-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Most NA prey weights are though also associated with NA prey sp</span></span>
+<span id="cb263-2"><a href="#cb263-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
+<span id="cb263-3"><a href="#cb263-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">is.na</span>(prey_weight_g)) <span class="sc">%&gt;%</span></span>
+<span id="cb263-4"><a href="#cb263-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb263-5"><a href="#cb263-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(prey_sp_code)) <span class="sc">+</span> </span>
+<span id="cb263-6"><a href="#cb263-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="at">stat =</span> <span class="st">&quot;count&quot;</span>) <span class="sc">+</span></span>
+<span id="cb263-7"><a href="#cb263-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle =</span> <span class="dv">90</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 88,737 rows (97%), 2,839 rows remaining</code></pre>
 </div>
@@ -5186,9 +5206,9 @@ date  (1): Date
 </figure>
 </div>
 </div>
-<div class="sourceCode cell-code" id="cb262"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb262-1"><a href="#cb262-1" aria-hidden="true" tabindex="-1"></a><span class="co"># If prey weight AND prey species is NA, set prey weight to 0. If prey are present I can&#39;t set weight to zero.</span></span>
-<span id="cb262-2"><a href="#cb262-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Check first if there are any 0 weights with prey present. </span></span>
-<span id="cb262-3"><a href="#cb262-3" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> <span class="fu">filter</span>(prey_weight_g <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span> <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb266"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb266-1"><a href="#cb266-1" aria-hidden="true" tabindex="-1"></a><span class="co"># If prey weight AND prey species is NA, set prey weight to 0. If prey are present I can&#39;t set weight to zero.</span></span>
+<span id="cb266-2"><a href="#cb266-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Check first if there are any 0 weights with prey present. </span></span>
+<span id="cb266-3"><a href="#cb266-3" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> <span class="fu">filter</span>(prey_weight_g <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span> <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 91,570 rows (&gt;99%), 6 rows remaining</code></pre>
 </div>
@@ -5243,20 +5263,20 @@ date  (1): Date
 5           pooled
 6           pooled</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb265"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb265-1"><a href="#cb265-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Yes, some. Change their weights to NA because they are not true zeroes, and set prey weight 0 if both prey species and prey weight is NA, because then I can calculate proportion empty stomachs manually using sum of prey weight per species</span></span>
-<span id="cb265-2"><a href="#cb265-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb265-3"><a href="#cb265-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">prey_weight_g =</span> <span class="fu">ifelse</span>(<span class="sc">!</span><span class="fu">is.na</span>(prey_sp_code) <span class="sc">&amp;</span> prey_weight_g <span class="sc">==</span> <span class="dv">0</span>, <span class="cn">NA</span>, prey_weight_g),</span>
-<span id="cb265-4"><a href="#cb265-4" aria-hidden="true" tabindex="-1"></a>         <span class="at">prey_weight_g =</span> <span class="fu">ifelse</span>(<span class="fu">is.na</span>(prey_sp_code) <span class="sc">&amp;</span> <span class="fu">is.na</span>(prey_weight_g), <span class="dv">0</span>, prey_weight_g))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb269"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb269-1"><a href="#cb269-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Yes, some. Change their weights to NA because they are not true zeroes, and set prey weight 0 if both prey species and prey weight is NA, because then I can calculate proportion empty stomachs manually using sum of prey weight per species</span></span>
+<span id="cb269-2"><a href="#cb269-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb269-3"><a href="#cb269-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">prey_weight_g =</span> <span class="fu">ifelse</span>(<span class="sc">!</span><span class="fu">is.na</span>(prey_sp_code) <span class="sc">&amp;</span> prey_weight_g <span class="sc">==</span> <span class="dv">0</span>, <span class="cn">NA</span>, prey_weight_g),</span>
+<span id="cb269-4"><a href="#cb269-4" aria-hidden="true" tabindex="-1"></a>         <span class="at">prey_weight_g =</span> <span class="fu">ifelse</span>(<span class="fu">is.na</span>(prey_sp_code) <span class="sc">&amp;</span> <span class="fu">is.na</span>(prey_weight_g), <span class="dv">0</span>, prey_weight_g))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>mutate: changed 2,571 values (3%) of &#39;prey_weight_g&#39; (2559 fewer NA)</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb267"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb267-1"><a href="#cb267-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Now prey_weight_g == 0 should have only 1 row per predator because it&#39;s an empty stomach</span></span>
-<span id="cb267-2"><a href="#cb267-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb267-3"><a href="#cb267-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_weight_g <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb267-4"><a href="#cb267-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(pred_id) <span class="sc">%&gt;%</span> </span>
-<span id="cb267-5"><a href="#cb267-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n =</span> <span class="fu">n</span>()) <span class="sc">%&gt;%</span> </span>
-<span id="cb267-6"><a href="#cb267-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb267-7"><a href="#cb267-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(n)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb271"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb271-1"><a href="#cb271-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Now prey_weight_g == 0 should have only 1 row per predator because it&#39;s an empty stomach</span></span>
+<span id="cb271-2"><a href="#cb271-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb271-3"><a href="#cb271-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_weight_g <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb271-4"><a href="#cb271-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(pred_id) <span class="sc">%&gt;%</span> </span>
+<span id="cb271-5"><a href="#cb271-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n =</span> <span class="fu">n</span>()) <span class="sc">%&gt;%</span> </span>
+<span id="cb271-6"><a href="#cb271-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb271-7"><a href="#cb271-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(n)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 89,011 rows (97%), 2,565 rows remaining</code></pre>
 </div>
@@ -5279,15 +5299,15 @@ date  (1): Date
 1     1
 2     2</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb274"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb274-1"><a href="#cb274-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Hmm why not?</span></span>
-<span id="cb274-2"><a href="#cb274-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb274-3"><a href="#cb274-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_weight_g <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb274-4"><a href="#cb274-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(pred_id) <span class="sc">%&gt;%</span> </span>
-<span id="cb274-5"><a href="#cb274-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n =</span> <span class="fu">n</span>()) <span class="sc">%&gt;%</span> </span>
-<span id="cb274-6"><a href="#cb274-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb274-7"><a href="#cb274-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(n <span class="sc">&gt;</span> <span class="dv">1</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb274-8"><a href="#cb274-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(pred_id) <span class="sc">%&gt;%</span> </span>
-<span id="cb274-9"><a href="#cb274-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb278"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb278-1"><a href="#cb278-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Hmm why not?</span></span>
+<span id="cb278-2"><a href="#cb278-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb278-3"><a href="#cb278-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_weight_g <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb278-4"><a href="#cb278-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(pred_id) <span class="sc">%&gt;%</span> </span>
+<span id="cb278-5"><a href="#cb278-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n =</span> <span class="fu">n</span>()) <span class="sc">%&gt;%</span> </span>
+<span id="cb278-6"><a href="#cb278-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb278-7"><a href="#cb278-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(n <span class="sc">&gt;</span> <span class="dv">1</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb278-8"><a href="#cb278-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(pred_id) <span class="sc">%&gt;%</span> </span>
+<span id="cb278-9"><a href="#cb278-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 89,011 rows (97%), 2,565 rows remaining</code></pre>
 </div>
@@ -5354,13 +5374,13 @@ date  (1): Date
 5        unique_id 2
 6        unique_id 2</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb281"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb281-1"><a href="#cb281-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Because it&#39;s not a unique ID because I don&#39;t have enough columns. Need to remove!</span></span>
-<span id="cb281-2"><a href="#cb281-2" aria-hidden="true" tabindex="-1"></a>ids_to_remove <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb281-3"><a href="#cb281-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_weight_g <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb281-4"><a href="#cb281-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(pred_id) <span class="sc">%&gt;%</span> </span>
-<span id="cb281-5"><a href="#cb281-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n =</span> <span class="fu">n</span>()) <span class="sc">%&gt;%</span> </span>
-<span id="cb281-6"><a href="#cb281-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb281-7"><a href="#cb281-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(n <span class="sc">&gt;</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb285"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb285-1"><a href="#cb285-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Because it&#39;s not a unique ID because I don&#39;t have enough columns. Need to remove!</span></span>
+<span id="cb285-2"><a href="#cb285-2" aria-hidden="true" tabindex="-1"></a>ids_to_remove <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb285-3"><a href="#cb285-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_weight_g <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb285-4"><a href="#cb285-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(pred_id) <span class="sc">%&gt;%</span> </span>
+<span id="cb285-5"><a href="#cb285-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n =</span> <span class="fu">n</span>()) <span class="sc">%&gt;%</span> </span>
+<span id="cb285-6"><a href="#cb285-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb285-7"><a href="#cb285-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(n <span class="sc">&gt;</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 89,011 rows (97%), 2,565 rows remaining</code></pre>
 </div>
@@ -5376,15 +5396,15 @@ date  (1): Date
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 2,559 rows (&gt;99%), 6 rows remaining</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb287"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb287-1"><a href="#cb287-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> <span class="fu">filter</span>(<span class="sc">!</span>pred_id <span class="sc">%in%</span> ids_to_remove<span class="sc">$</span>pred_id)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb291"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb291-1"><a href="#cb291-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> <span class="fu">filter</span>(<span class="sc">!</span>pred_id <span class="sc">%in%</span> ids_to_remove<span class="sc">$</span>pred_id)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 6 rows (&lt;1%), 91,570 rows remaining</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb289"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb289-1"><a href="#cb289-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Are there any prey weight == NA where I have prey size?</span></span>
-<span id="cb289-2"><a href="#cb289-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Yes, but it&#39;s litter...</span></span>
-<span id="cb289-3"><a href="#cb289-3" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb289-4"><a href="#cb289-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">is.na</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
-<span id="cb289-5"><a href="#cb289-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(prey_length_cm)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb293"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb293-1"><a href="#cb293-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Are there any prey weight == NA where I have prey size?</span></span>
+<span id="cb293-2"><a href="#cb293-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Yes, but it&#39;s litter...</span></span>
+<span id="cb293-3"><a href="#cb293-3" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb293-4"><a href="#cb293-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">is.na</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
+<span id="cb293-5"><a href="#cb293-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(prey_length_cm)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 91,290 rows (&gt;99%), 280 rows remaining</code></pre>
 </div>
@@ -5398,10 +5418,10 @@ date  (1): Date
 1             NA
 2              4</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb293"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb293-1"><a href="#cb293-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb293-2"><a href="#cb293-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">is.na</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
-<span id="cb293-3"><a href="#cb293-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(prey_length_cm)) <span class="sc">%&gt;%</span> </span>
-<span id="cb293-4"><a href="#cb293-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb297"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb297-1"><a href="#cb297-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb297-2"><a href="#cb297-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">is.na</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
+<span id="cb297-3"><a href="#cb297-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(prey_length_cm)) <span class="sc">%&gt;%</span> </span>
+<span id="cb297-4"><a href="#cb297-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 91,290 rows (&gt;99%), 280 rows remaining</code></pre>
 </div>
@@ -5424,21 +5444,21 @@ date  (1): Date
   prey_weight_type
 1        unique_id</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb297"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb297-1"><a href="#cb297-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Plot proportion empty stomachs by year, quarter and species</span></span>
-<span id="cb297-2"><a href="#cb297-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb297-3"><a href="#cb297-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">drop_na</span>(prey_weight_g) <span class="sc">%&gt;%</span> <span class="co"># remember, these NA&#39;s are just missing weights, not empty stomachs!</span></span>
-<span id="cb297-4"><a href="#cb297-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(year, quarter, predator_code, pred_id) <span class="sc">%&gt;%</span></span>
-<span id="cb297-5"><a href="#cb297-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">tot_prey_weight =</span> <span class="fu">sum</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
-<span id="cb297-6"><a href="#cb297-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">empty_stom =</span> <span class="fu">ifelse</span>(tot_prey_weight <span class="sc">==</span> <span class="dv">0</span>, <span class="st">&quot;Y&quot;</span>, <span class="st">&quot;N&quot;</span>)) <span class="sc">%&gt;%</span> </span>
-<span id="cb297-7"><a href="#cb297-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb297-8"><a href="#cb297-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(year, quarter, predator_code) <span class="sc">%&gt;%</span></span>
-<span id="cb297-9"><a href="#cb297-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">count</span>(empty_stom) <span class="sc">%&gt;%</span></span>
-<span id="cb297-10"><a href="#cb297-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_wider</span>(<span class="at">values_from =</span> n, <span class="at">names_from =</span> empty_stom) <span class="sc">%&gt;%</span> </span>
-<span id="cb297-11"><a href="#cb297-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">prop_empty =</span> Y <span class="sc">/</span> (Y <span class="sc">+</span> N)) <span class="sc">%&gt;%</span> </span>
-<span id="cb297-12"><a href="#cb297-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(year, prop_empty, <span class="at">color =</span> <span class="fu">factor</span>(quarter))) <span class="sc">+</span></span>
-<span id="cb297-13"><a href="#cb297-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>() <span class="sc">+</span></span>
-<span id="cb297-14"><a href="#cb297-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>() <span class="sc">+</span></span>
-<span id="cb297-15"><a href="#cb297-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>predator_code, <span class="at">ncol =</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb301"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb301-1"><a href="#cb301-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Plot proportion empty stomachs by year, quarter and species</span></span>
+<span id="cb301-2"><a href="#cb301-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb301-3"><a href="#cb301-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">drop_na</span>(prey_weight_g) <span class="sc">%&gt;%</span> <span class="co"># remember, these NA&#39;s are just missing weights, not empty stomachs!</span></span>
+<span id="cb301-4"><a href="#cb301-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(year, quarter, predator_code, pred_id) <span class="sc">%&gt;%</span></span>
+<span id="cb301-5"><a href="#cb301-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">tot_prey_weight =</span> <span class="fu">sum</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
+<span id="cb301-6"><a href="#cb301-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">empty_stom =</span> <span class="fu">ifelse</span>(tot_prey_weight <span class="sc">==</span> <span class="dv">0</span>, <span class="st">&quot;Y&quot;</span>, <span class="st">&quot;N&quot;</span>)) <span class="sc">%&gt;%</span> </span>
+<span id="cb301-7"><a href="#cb301-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb301-8"><a href="#cb301-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(year, quarter, predator_code) <span class="sc">%&gt;%</span></span>
+<span id="cb301-9"><a href="#cb301-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">count</span>(empty_stom) <span class="sc">%&gt;%</span></span>
+<span id="cb301-10"><a href="#cb301-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_wider</span>(<span class="at">values_from =</span> n, <span class="at">names_from =</span> empty_stom) <span class="sc">%&gt;%</span> </span>
+<span id="cb301-11"><a href="#cb301-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">prop_empty =</span> Y <span class="sc">/</span> (Y <span class="sc">+</span> N)) <span class="sc">%&gt;%</span> </span>
+<span id="cb301-12"><a href="#cb301-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(year, prop_empty, <span class="at">color =</span> <span class="fu">factor</span>(quarter))) <span class="sc">+</span></span>
+<span id="cb301-13"><a href="#cb301-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>() <span class="sc">+</span></span>
+<span id="cb301-14"><a href="#cb301-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>() <span class="sc">+</span></span>
+<span id="cb301-15"><a href="#cb301-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>predator_code, <span class="at">ncol =</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>drop_na: removed 280 rows (&lt;1%), 91,290 rows remaining</code></pre>
 </div>
@@ -5473,38 +5493,38 @@ date  (1): Date
 </figure>
 </div>
 </div>
-<div class="sourceCode cell-code" id="cb307"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb307-1"><a href="#cb307-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Fix predator sizes</span></span>
-<span id="cb307-2"><a href="#cb307-2" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>weight))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb311"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb311-1"><a href="#cb311-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Fix predator sizes</span></span>
+<span id="cb311-2"><a href="#cb311-2" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>weight))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] FALSE</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb309"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb309-1"><a href="#cb309-1" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>size)) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb313"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb313-1"><a href="#cb313-1" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>size)) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] FALSE</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb311"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb311-1"><a href="#cb311-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The above two come from bio data...</span></span>
-<span id="cb311-2"><a href="#cb311-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Strange I have both these columns from the stomach data...</span></span>
-<span id="cb311-3"><a href="#cb311-3" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>pred_weight))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb315"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb315-1"><a href="#cb315-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The above two come from bio data...</span></span>
+<span id="cb315-2"><a href="#cb315-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Strange I have both these columns from the stomach data...</span></span>
+<span id="cb315-3"><a href="#cb315-3" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>pred_weight))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1]  TRUE FALSE</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb313"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb313-1"><a href="#cb313-1" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>pred_weight_g))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb317"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb317-1"><a href="#cb317-1" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>pred_weight_g))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1]  TRUE FALSE</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb315"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb315-1"><a href="#cb315-1" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>pred_size))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb319"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb319-1"><a href="#cb319-1" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>pred_size))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1]  TRUE FALSE</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb317"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb317-1"><a href="#cb317-1" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>pred_size_cm))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb321"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb321-1"><a href="#cb321-1" aria-hidden="true" tabindex="-1"></a><span class="fu">unique</span>(<span class="fu">is.na</span>(d2<span class="sc">$</span>pred_size_cm))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1]  TRUE FALSE</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb319"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb319-1"><a href="#cb319-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
-<span id="cb319-2"><a href="#cb319-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(pred_weight)) <span class="sc">%&gt;%</span> </span>
-<span id="cb319-3"><a href="#cb319-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(pred_weight, weight)) <span class="sc">+</span> </span>
-<span id="cb319-4"><a href="#cb319-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">color =</span> <span class="st">&quot;red&quot;</span>) <span class="sc">+</span></span>
-<span id="cb319-5"><a href="#cb319-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb323"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb323-1"><a href="#cb323-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
+<span id="cb323-2"><a href="#cb323-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(pred_weight)) <span class="sc">%&gt;%</span> </span>
+<span id="cb323-3"><a href="#cb323-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(pred_weight, weight)) <span class="sc">+</span> </span>
+<span id="cb323-4"><a href="#cb323-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">color =</span> <span class="st">&quot;red&quot;</span>) <span class="sc">+</span></span>
+<span id="cb323-5"><a href="#cb323-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 55,988 rows (61%), 35,582 rows remaining</code></pre>
 </div>
@@ -5515,11 +5535,11 @@ date  (1): Date
 </figure>
 </div>
 </div>
-<div class="sourceCode cell-code" id="cb321"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb321-1"><a href="#cb321-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
-<span id="cb321-2"><a href="#cb321-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(pred_weight_g)) <span class="sc">%&gt;%</span> </span>
-<span id="cb321-3"><a href="#cb321-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(pred_weight_g, weight)) <span class="sc">+</span>  </span>
-<span id="cb321-4"><a href="#cb321-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">color =</span> <span class="st">&quot;red&quot;</span>) <span class="sc">+</span></span>
-<span id="cb321-5"><a href="#cb321-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb325"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb325-1"><a href="#cb325-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
+<span id="cb325-2"><a href="#cb325-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(pred_weight_g)) <span class="sc">%&gt;%</span> </span>
+<span id="cb325-3"><a href="#cb325-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(pred_weight_g, weight)) <span class="sc">+</span>  </span>
+<span id="cb325-4"><a href="#cb325-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">color =</span> <span class="st">&quot;red&quot;</span>) <span class="sc">+</span></span>
+<span id="cb325-5"><a href="#cb325-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 89,637 rows (98%), 1,933 rows remaining</code></pre>
 </div>
@@ -5530,17 +5550,17 @@ date  (1): Date
 </figure>
 </div>
 </div>
-<div class="sourceCode cell-code" id="cb323"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb323-1"><a href="#cb323-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Seems we can use weight as the predator weight in grams..</span></span>
-<span id="cb323-2"><a href="#cb323-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb323-3"><a href="#cb323-3" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="sc">-</span>pred_weight, <span class="sc">-</span>pred_weight_g) <span class="sc">%&gt;%</span> </span>
-<span id="cb323-4"><a href="#cb323-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">pred_weight_g =</span> weight)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb327"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb327-1"><a href="#cb327-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Seems we can use weight as the predator weight in grams..</span></span>
+<span id="cb327-2"><a href="#cb327-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb327-3"><a href="#cb327-3" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="sc">-</span>pred_weight, <span class="sc">-</span>pred_weight_g) <span class="sc">%&gt;%</span> </span>
+<span id="cb327-4"><a href="#cb327-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">pred_weight_g =</span> weight)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>rename: renamed one variable (pred_weight_g)</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb325"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb325-1"><a href="#cb325-1" aria-hidden="true" tabindex="-1"></a><span class="co"># </span><span class="al">TODO</span><span class="co">: Really strange that predator size is all 9 in the biological data...</span></span>
-<span id="cb325-2"><a href="#cb325-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
-<span id="cb325-3"><a href="#cb325-3" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(size, pred_size, pred_size_cm, lengthcl) <span class="sc">%&gt;%</span> </span>
-<span id="cb325-4"><a href="#cb325-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summary</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb329"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb329-1"><a href="#cb329-1" aria-hidden="true" tabindex="-1"></a><span class="co"># </span><span class="al">TODO</span><span class="co">: Really strange that predator size is all 9 in the biological data...</span></span>
+<span id="cb329-2"><a href="#cb329-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
+<span id="cb329-3"><a href="#cb329-3" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(size, pred_size, pred_size_cm, lengthcl) <span class="sc">%&gt;%</span> </span>
+<span id="cb329-4"><a href="#cb329-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summary</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>      size     pred_size      pred_size_cm      lengthcl  
  Min.   :9   Min.   :  9.0   Min.   : 40.0   Min.   : 40  
@@ -5551,8 +5571,8 @@ date  (1): Date
  Max.   :9   Max.   :770.0   Max.   :600.0   Max.   :770  
              NA&#39;s   :55989   NA&#39;s   :89637                </code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb327"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb327-1"><a href="#cb327-1" aria-hidden="true" tabindex="-1"></a><span class="co"># What about the size in the stomach file?</span></span>
-<span id="cb327-2"><a href="#cb327-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> <span class="fu">filter</span>(<span class="fu">is.na</span>(pred_size) <span class="sc">&amp;</span> <span class="fu">is.na</span>(pred_size_cm))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb331"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb331-1"><a href="#cb331-1" aria-hidden="true" tabindex="-1"></a><span class="co"># What about the size in the stomach file?</span></span>
+<span id="cb331-2"><a href="#cb331-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span> <span class="fu">filter</span>(<span class="fu">is.na</span>(pred_size) <span class="sc">&amp;</span> <span class="fu">is.na</span>(pred_size_cm))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 37,514 rows (41%), 54,056 rows remaining</code></pre>
 </div>
@@ -5578,12 +5598,12 @@ date  (1): Date
 #   scod_kg_km2 &lt;dbl&gt;, year &lt;dbl&gt;, quarter &lt;dbl&gt;, lat &lt;dbl&gt;, lon &lt;dbl&gt;,
 #   bottom_depth &lt;dbl&gt;, species &lt;chr&gt;, lengthcl &lt;dbl&gt;, pred_weight_g &lt;dbl&gt;, …</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb330"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb330-1"><a href="#cb330-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Many NAs for pred_size and pred_size_cm, but not lengthcl</span></span>
-<span id="cb330-2"><a href="#cb330-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
-<span id="cb330-3"><a href="#cb330-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(pred_size_cm)) <span class="sc">%&gt;%</span> </span>
-<span id="cb330-4"><a href="#cb330-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(pred_size_cm, lengthcl)) <span class="sc">+</span>  </span>
-<span id="cb330-5"><a href="#cb330-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">color =</span> <span class="st">&quot;red&quot;</span>) <span class="sc">+</span></span>
-<span id="cb330-6"><a href="#cb330-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb334"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb334-1"><a href="#cb334-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Many NAs for pred_size and pred_size_cm, but not lengthcl</span></span>
+<span id="cb334-2"><a href="#cb334-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
+<span id="cb334-3"><a href="#cb334-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(pred_size_cm)) <span class="sc">%&gt;%</span> </span>
+<span id="cb334-4"><a href="#cb334-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(pred_size_cm, lengthcl)) <span class="sc">+</span>  </span>
+<span id="cb334-5"><a href="#cb334-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">color =</span> <span class="st">&quot;red&quot;</span>) <span class="sc">+</span></span>
+<span id="cb334-6"><a href="#cb334-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 89,637 rows (98%), 1,933 rows remaining</code></pre>
 </div>
@@ -5594,11 +5614,11 @@ date  (1): Date
 </figure>
 </div>
 </div>
-<div class="sourceCode cell-code" id="cb332"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb332-1"><a href="#cb332-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
-<span id="cb332-2"><a href="#cb332-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(pred_size)) <span class="sc">%&gt;%</span> </span>
-<span id="cb332-3"><a href="#cb332-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(pred_size, lengthcl)) <span class="sc">+</span>  </span>
-<span id="cb332-4"><a href="#cb332-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">color =</span> <span class="st">&quot;red&quot;</span>) <span class="sc">+</span></span>
-<span id="cb332-5"><a href="#cb332-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb336"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb336-1"><a href="#cb336-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="sc">%&gt;%</span></span>
+<span id="cb336-2"><a href="#cb336-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(pred_size)) <span class="sc">%&gt;%</span> </span>
+<span id="cb336-3"><a href="#cb336-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(pred_size, lengthcl)) <span class="sc">+</span>  </span>
+<span id="cb336-4"><a href="#cb336-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">color =</span> <span class="st">&quot;red&quot;</span>) <span class="sc">+</span></span>
+<span id="cb336-5"><a href="#cb336-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 55,989 rows (61%), 35,581 rows remaining</code></pre>
 </div>
@@ -5609,21 +5629,21 @@ date  (1): Date
 </figure>
 </div>
 </div>
-<div class="sourceCode cell-code" id="cb334"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb334-1"><a href="#cb334-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ok, just use lengthcl, which is cm</span></span>
-<span id="cb334-2"><a href="#cb334-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb334-3"><a href="#cb334-3" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="sc">-</span>pred_size_cm, <span class="sc">-</span>pred_size) <span class="sc">%&gt;%</span> </span>
-<span id="cb334-4"><a href="#cb334-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">pred_length_cm =</span> lengthcl) <span class="sc">%&gt;%</span> </span>
-<span id="cb334-5"><a href="#cb334-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">pred_length_cm =</span> pred_length_cm<span class="sc">/</span><span class="dv">10</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb338"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb338-1"><a href="#cb338-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ok, just use lengthcl, which is cm</span></span>
+<span id="cb338-2"><a href="#cb338-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb338-3"><a href="#cb338-3" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="sc">-</span>pred_size_cm, <span class="sc">-</span>pred_size) <span class="sc">%&gt;%</span> </span>
+<span id="cb338-4"><a href="#cb338-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">pred_length_cm =</span> lengthcl) <span class="sc">%&gt;%</span> </span>
+<span id="cb338-5"><a href="#cb338-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">pred_length_cm =</span> pred_length_cm<span class="sc">/</span><span class="dv">10</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>rename: renamed one variable (pred_length_cm)</code></pre>
 </div>
 <div class="cell-output cell-output-stderr">
 <pre><code>mutate: changed 91,570 values (100%) of &#39;pred_length_cm&#39; (0 new NA)</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb337"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb337-1"><a href="#cb337-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Plot length-weight</span></span>
-<span id="cb337-2"><a href="#cb337-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(d2, <span class="fu">aes</span>(pred_length_cm, pred_weight_g)) <span class="sc">+</span></span>
-<span id="cb337-3"><a href="#cb337-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>() <span class="sc">+</span></span>
-<span id="cb337-4"><a href="#cb337-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>species, <span class="at">ncol =</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb341"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb341-1"><a href="#cb341-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Plot length-weight</span></span>
+<span id="cb341-2"><a href="#cb341-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(d2, <span class="fu">aes</span>(pred_length_cm, pred_weight_g)) <span class="sc">+</span></span>
+<span id="cb341-3"><a href="#cb341-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>() <span class="sc">+</span></span>
+<span id="cb341-4"><a href="#cb341-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>species, <span class="at">ncol =</span> <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -5631,39 +5651,39 @@ date  (1): Date
 </figure>
 </div>
 </div>
-<div class="sourceCode cell-code" id="cb338"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb338-1"><a href="#cb338-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add ices_rec based on coordinates</span></span>
-<span id="cb338-2"><a href="#cb338-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb338-3"><a href="#cb338-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">ices_rect =</span> <span class="fu">ices.rect2</span>(lon, lat))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb342"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb342-1"><a href="#cb342-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add ices_rec based on coordinates</span></span>
+<span id="cb342-2"><a href="#cb342-2" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb342-3"><a href="#cb342-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">ices_rect =</span> <span class="fu">ices.rect2</span>(lon, lat))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>mutate: new variable &#39;ices_rect&#39; (character) with 20 unique values and 0% NA</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb340"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb340-1"><a href="#cb340-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add in ICES sub-divisions</span></span>
-<span id="cb340-2"><a href="#cb340-2" aria-hidden="true" tabindex="-1"></a>shape <span class="ot">&lt;-</span> <span class="fu">shapefile</span>(<span class="fu">paste0</span>(home, <span class="st">&quot;/data/ICES-StatRec-mapto-ICES-Areas/StatRec_map_Areas_Full_20170124.shp&quot;</span>))</span>
-<span id="cb340-3"><a href="#cb340-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb340-4"><a href="#cb340-4" aria-hidden="true" tabindex="-1"></a>pts <span class="ot">&lt;-</span> <span class="fu">SpatialPoints</span>(<span class="fu">cbind</span>(d2<span class="sc">$</span>lon, d2<span class="sc">$</span>lat), </span>
-<span id="cb340-5"><a href="#cb340-5" aria-hidden="true" tabindex="-1"></a>                     <span class="at">proj4string =</span> <span class="fu">CRS</span>(<span class="fu">proj4string</span>(shape)))</span>
-<span id="cb340-6"><a href="#cb340-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb340-7"><a href="#cb340-7" aria-hidden="true" tabindex="-1"></a>d2<span class="sc">$</span>subdiv <span class="ot">&lt;-</span> <span class="fu">over</span>(pts, shape)<span class="sc">$</span>Area_27</span>
-<span id="cb340-8"><a href="#cb340-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb340-9"><a href="#cb340-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Rename subdivisions to the more common names and do some more filtering (by sub div and area)</span></span>
-<span id="cb340-10"><a href="#cb340-10" aria-hidden="true" tabindex="-1"></a><span class="fu">sort</span>(<span class="fu">unique</span>(d2<span class="sc">$</span>subdiv))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb344"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb344-1"><a href="#cb344-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add in ICES sub-divisions</span></span>
+<span id="cb344-2"><a href="#cb344-2" aria-hidden="true" tabindex="-1"></a>shape <span class="ot">&lt;-</span> <span class="fu">shapefile</span>(<span class="fu">paste0</span>(home, <span class="st">&quot;/data/ICES-StatRec-mapto-ICES-Areas/StatRec_map_Areas_Full_20170124.shp&quot;</span>))</span>
+<span id="cb344-3"><a href="#cb344-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb344-4"><a href="#cb344-4" aria-hidden="true" tabindex="-1"></a>pts <span class="ot">&lt;-</span> <span class="fu">SpatialPoints</span>(<span class="fu">cbind</span>(d2<span class="sc">$</span>lon, d2<span class="sc">$</span>lat), </span>
+<span id="cb344-5"><a href="#cb344-5" aria-hidden="true" tabindex="-1"></a>                     <span class="at">proj4string =</span> <span class="fu">CRS</span>(<span class="fu">proj4string</span>(shape)))</span>
+<span id="cb344-6"><a href="#cb344-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb344-7"><a href="#cb344-7" aria-hidden="true" tabindex="-1"></a>d2<span class="sc">$</span>subdiv <span class="ot">&lt;-</span> <span class="fu">over</span>(pts, shape)<span class="sc">$</span>Area_27</span>
+<span id="cb344-8"><a href="#cb344-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb344-9"><a href="#cb344-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Rename subdivisions to the more common names and do some more filtering (by sub div and area)</span></span>
+<span id="cb344-10"><a href="#cb344-10" aria-hidden="true" tabindex="-1"></a><span class="fu">sort</span>(<span class="fu">unique</span>(d2<span class="sc">$</span>subdiv))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] &quot;3.d.24&quot;   &quot;3.d.25&quot;   &quot;3.d.26&quot;   &quot;3.d.27&quot;   &quot;3.d.28.2&quot;</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb342"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb342-1"><a href="#cb342-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb342-2"><a href="#cb342-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">subdiv =</span> <span class="fu">factor</span>(subdiv),</span>
-<span id="cb342-3"><a href="#cb342-3" aria-hidden="true" tabindex="-1"></a>         <span class="at">subdiv =</span> <span class="fu">fct_recode</span>(subdiv,</span>
-<span id="cb342-4"><a href="#cb342-4" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;24&quot;</span> <span class="ot">=</span> <span class="st">&quot;3.d.24&quot;</span>,</span>
-<span id="cb342-5"><a href="#cb342-5" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;25&quot;</span> <span class="ot">=</span> <span class="st">&quot;3.d.25&quot;</span>,</span>
-<span id="cb342-6"><a href="#cb342-6" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;26&quot;</span> <span class="ot">=</span> <span class="st">&quot;3.d.26&quot;</span>,</span>
-<span id="cb342-7"><a href="#cb342-7" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;27&quot;</span> <span class="ot">=</span> <span class="st">&quot;3.d.27&quot;</span>,</span>
-<span id="cb342-8"><a href="#cb342-8" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;28&quot;</span> <span class="ot">=</span> <span class="st">&quot;3.d.28.2&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb346"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb346-1"><a href="#cb346-1" aria-hidden="true" tabindex="-1"></a>d2 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb346-2"><a href="#cb346-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">subdiv =</span> <span class="fu">factor</span>(subdiv),</span>
+<span id="cb346-3"><a href="#cb346-3" aria-hidden="true" tabindex="-1"></a>         <span class="at">subdiv =</span> <span class="fu">fct_recode</span>(subdiv,</span>
+<span id="cb346-4"><a href="#cb346-4" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;24&quot;</span> <span class="ot">=</span> <span class="st">&quot;3.d.24&quot;</span>,</span>
+<span id="cb346-5"><a href="#cb346-5" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;25&quot;</span> <span class="ot">=</span> <span class="st">&quot;3.d.25&quot;</span>,</span>
+<span id="cb346-6"><a href="#cb346-6" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;26&quot;</span> <span class="ot">=</span> <span class="st">&quot;3.d.26&quot;</span>,</span>
+<span id="cb346-7"><a href="#cb346-7" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;27&quot;</span> <span class="ot">=</span> <span class="st">&quot;3.d.27&quot;</span>,</span>
+<span id="cb346-8"><a href="#cb346-8" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;28&quot;</span> <span class="ot">=</span> <span class="st">&quot;3.d.28.2&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>mutate: converted &#39;subdiv&#39; from character to factor (0 new NA)</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb344"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb344-1"><a href="#cb344-1" aria-hidden="true" tabindex="-1"></a>plot_map <span class="sc">+</span> </span>
-<span id="cb344-2"><a href="#cb344-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="at">data =</span> d2, <span class="fu">aes</span>(<span class="at">x =</span> X<span class="sc">*</span><span class="dv">1000</span>, <span class="at">y =</span> Y<span class="sc">*</span><span class="dv">1000</span>, <span class="at">color =</span> subdiv), <span class="at">size =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb344-3"><a href="#cb344-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>year)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb348"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb348-1"><a href="#cb348-1" aria-hidden="true" tabindex="-1"></a>plot_map <span class="sc">+</span> </span>
+<span id="cb348-2"><a href="#cb348-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="at">data =</span> d2, <span class="fu">aes</span>(<span class="at">x =</span> X<span class="sc">*</span><span class="dv">1000</span>, <span class="at">y =</span> Y<span class="sc">*</span><span class="dv">1000</span>, <span class="at">color =</span> subdiv), <span class="at">size =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb348-3"><a href="#cb348-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>year)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>Warning: colourbar guide needs continuous scales.</code></pre>
 </div>
@@ -5674,11 +5694,11 @@ date  (1): Date
 </figure>
 </div>
 </div>
-<div class="sourceCode cell-code" id="cb346"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb346-1"><a href="#cb346-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Rename and select key columns</span></span>
-<span id="cb346-2"><a href="#cb346-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
-<span id="cb346-3"><a href="#cb346-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">prey_latin_name =</span> prey_sp_code) <span class="sc">%&gt;%</span> </span>
-<span id="cb346-4"><a href="#cb346-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">drop_na</span>(prey_weight_g) <span class="sc">%&gt;%</span> </span>
-<span id="cb346-5"><a href="#cb346-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">predator_latin_name =</span> <span class="fu">ifelse</span>(predator_code <span class="sc">==</span> <span class="st">&quot;COD&quot;</span>, <span class="st">&quot;Gadus morhua&quot;</span>, <span class="st">&quot;Platichthys flesus&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb350"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb350-1"><a href="#cb350-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Rename and select key columns</span></span>
+<span id="cb350-2"><a href="#cb350-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="ot">&lt;-</span> d2 <span class="sc">%&gt;%</span> </span>
+<span id="cb350-3"><a href="#cb350-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">prey_latin_name =</span> prey_sp_code) <span class="sc">%&gt;%</span> </span>
+<span id="cb350-4"><a href="#cb350-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">drop_na</span>(prey_weight_g) <span class="sc">%&gt;%</span> </span>
+<span id="cb350-5"><a href="#cb350-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">predator_latin_name =</span> <span class="fu">ifelse</span>(predator_code <span class="sc">==</span> <span class="st">&quot;COD&quot;</span>, <span class="st">&quot;Gadus morhua&quot;</span>, <span class="st">&quot;Platichthys flesus&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>rename: renamed one variable (prey_latin_name)</code></pre>
 </div>
@@ -5694,7 +5714,7 @@ date  (1): Date
 <h2 class="anchored" data-anchor-id="check-complete-data">Check complete data</h2>
 <p>Rename some columns and do a brief quality check</p>
 <div class="cell" data-layout-align="center">
-<div class="sourceCode cell-code" id="cb350"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb350-1"><a href="#cb350-1" aria-hidden="true" tabindex="-1"></a><span class="fu">glimpse</span>(d3)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb354"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb354-1"><a href="#cb354-1" aria-hidden="true" tabindex="-1"></a><span class="fu">glimpse</span>(d3)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Rows: 91,290
 Columns: 37
@@ -5736,11 +5756,11 @@ $ prey_weight_type    &lt;chr&gt; &quot;pooled&quot;, &quot;pooled&quot;, &quot;
 $ ices_rect           &lt;chr&gt; &quot;41G7&quot;, &quot;41G7&quot;, &quot;41G7&quot;, &quot;41G7&quot;, &quot;41G7&quot;, &quot;41G7&quot;, &quot;4…
 $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platichthys flesus&quot;, &quot;Plati…</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb352"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb352-1"><a href="#cb352-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check some prey weights (unfortunately I can&#39;t check all species because I have no idea how big they become)</span></span>
-<span id="cb352-2"><a href="#cb352-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span></span>
-<span id="cb352-3"><a href="#cb352-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_latin_name <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;Sprattus sprattus&quot;</span>) <span class="sc">&amp;</span> prey_weight_g <span class="sc">&gt;</span> <span class="fl">0.01</span><span class="sc">*</span><span class="dv">16</span><span class="sc">^</span><span class="dv">3</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb352-4"><a href="#cb352-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
-<span id="cb352-5"><a href="#cb352-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb356"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb356-1"><a href="#cb356-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check some prey weights (unfortunately I can&#39;t check all species because I have no idea how big they become)</span></span>
+<span id="cb356-2"><a href="#cb356-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span></span>
+<span id="cb356-3"><a href="#cb356-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_latin_name <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;Sprattus sprattus&quot;</span>) <span class="sc">&amp;</span> prey_weight_g <span class="sc">&gt;</span> <span class="fl">0.01</span><span class="sc">*</span><span class="dv">16</span><span class="sc">^</span><span class="dv">3</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb356-4"><a href="#cb356-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
+<span id="cb356-5"><a href="#cb356-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 91,289 rows (&gt;99%), one row remaining</code></pre>
 </div>
@@ -5760,11 +5780,11 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
   predator_latin_name
 1        Gadus morhua</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb355"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb355-1"><a href="#cb355-1" aria-hidden="true" tabindex="-1"></a><span class="co"># For herring not as much</span></span>
-<span id="cb355-2"><a href="#cb355-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span></span>
-<span id="cb355-3"><a href="#cb355-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_latin_name <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;Clupea harengus&quot;</span>) <span class="sc">&amp;</span> prey_weight_g <span class="sc">&gt;</span> <span class="fl">0.01</span><span class="sc">*</span><span class="dv">30</span><span class="sc">^</span><span class="dv">3</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb355-4"><a href="#cb355-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
-<span id="cb355-5"><a href="#cb355-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb359"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb359-1"><a href="#cb359-1" aria-hidden="true" tabindex="-1"></a><span class="co"># For herring not as much</span></span>
+<span id="cb359-2"><a href="#cb359-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span></span>
+<span id="cb359-3"><a href="#cb359-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_latin_name <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;Clupea harengus&quot;</span>) <span class="sc">&amp;</span> prey_weight_g <span class="sc">&gt;</span> <span class="fl">0.01</span><span class="sc">*</span><span class="dv">30</span><span class="sc">^</span><span class="dv">3</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb359-4"><a href="#cb359-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
+<span id="cb359-5"><a href="#cb359-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed all rows (100%)</code></pre>
 </div>
@@ -5784,11 +5804,11 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 [37] predator_latin_name
 &lt;0 rows&gt; (or 0-length row.names)</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb358"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb358-1"><a href="#cb358-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Saduria? A few.</span></span>
-<span id="cb358-2"><a href="#cb358-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span></span>
-<span id="cb358-3"><a href="#cb358-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_latin_name <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;Saduria entomon&quot;</span>) <span class="sc">&amp;</span> prey_weight_g <span class="sc">&gt;</span> <span class="dv">10</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb358-4"><a href="#cb358-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
-<span id="cb358-5"><a href="#cb358-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb362"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb362-1"><a href="#cb362-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Saduria? A few.</span></span>
+<span id="cb362-2"><a href="#cb362-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span></span>
+<span id="cb362-3"><a href="#cb362-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_latin_name <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;Saduria entomon&quot;</span>) <span class="sc">&amp;</span> prey_weight_g <span class="sc">&gt;</span> <span class="dv">10</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb362-4"><a href="#cb362-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(prey_weight_g)) <span class="sc">%&gt;%</span> </span>
+<span id="cb362-5"><a href="#cb362-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 91,286 rows (&gt;99%), 4 rows remaining</code></pre>
 </div>
@@ -5829,11 +5849,11 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 3  Platichthys flesus
 4  Platichthys flesus</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb361"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb361-1"><a href="#cb361-1" aria-hidden="true" tabindex="-1"></a>d3 <span class="ot">&lt;-</span> d3 <span class="sc">%&gt;%</span> </span>
-<span id="cb361-2"><a href="#cb361-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">keep =</span> <span class="fu">ifelse</span>(prey_latin_name <span class="sc">==</span> <span class="st">&quot;Saduria entomon&quot;</span> <span class="sc">&amp;</span> prey_weight_g <span class="sc">&gt;</span> <span class="dv">10</span>, <span class="st">&quot;N&quot;</span>, <span class="st">&quot;Y&quot;</span>)) <span class="sc">%&gt;%</span> </span>
-<span id="cb361-3"><a href="#cb361-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">keep =</span> <span class="fu">ifelse</span>(prey_latin_name <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;Sprattus sprattus&quot;</span>) <span class="sc">&amp;</span> prey_weight_g <span class="sc">&gt;</span> <span class="fl">0.01</span><span class="sc">*</span><span class="dv">16</span><span class="sc">^</span><span class="dv">3</span>, <span class="st">&quot;N&quot;</span>, keep)) <span class="sc">%&gt;%</span> </span>
-<span id="cb361-4"><a href="#cb361-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(keep <span class="sc">==</span> <span class="st">&quot;Y&quot;</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb361-5"><a href="#cb361-5" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="sc">-</span>keep)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb365"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb365-1"><a href="#cb365-1" aria-hidden="true" tabindex="-1"></a>d3 <span class="ot">&lt;-</span> d3 <span class="sc">%&gt;%</span> </span>
+<span id="cb365-2"><a href="#cb365-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">keep =</span> <span class="fu">ifelse</span>(prey_latin_name <span class="sc">==</span> <span class="st">&quot;Saduria entomon&quot;</span> <span class="sc">&amp;</span> prey_weight_g <span class="sc">&gt;</span> <span class="dv">10</span>, <span class="st">&quot;N&quot;</span>, <span class="st">&quot;Y&quot;</span>)) <span class="sc">%&gt;%</span> </span>
+<span id="cb365-3"><a href="#cb365-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">keep =</span> <span class="fu">ifelse</span>(prey_latin_name <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;Sprattus sprattus&quot;</span>) <span class="sc">&amp;</span> prey_weight_g <span class="sc">&gt;</span> <span class="fl">0.01</span><span class="sc">*</span><span class="dv">16</span><span class="sc">^</span><span class="dv">3</span>, <span class="st">&quot;N&quot;</span>, keep)) <span class="sc">%&gt;%</span> </span>
+<span id="cb365-4"><a href="#cb365-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(keep <span class="sc">==</span> <span class="st">&quot;Y&quot;</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb365-5"><a href="#cb365-5" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="sc">-</span>keep)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>mutate: new variable &#39;keep&#39; (character) with 2 unique values and 0% NA</code></pre>
 </div>
@@ -5843,10 +5863,10 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 5 rows (&lt;1%), 91,285 rows remaining</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb365"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb365-1"><a href="#cb365-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Are there prey with length but not weight?</span></span>
-<span id="cb365-2"><a href="#cb365-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
-<span id="cb365-3"><a href="#cb365-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">is.na</span>(prey_weight_g) <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(prey_length_cm)) <span class="sc">%&gt;%</span> </span>
-<span id="cb365-4"><a href="#cb365-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(prey_latin_name)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb369"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb369-1"><a href="#cb369-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Are there prey with length but not weight?</span></span>
+<span id="cb369-2"><a href="#cb369-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
+<span id="cb369-3"><a href="#cb369-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">is.na</span>(prey_weight_g) <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(prey_length_cm)) <span class="sc">%&gt;%</span> </span>
+<span id="cb369-4"><a href="#cb369-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(prey_latin_name)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed all rows (100%)</code></pre>
 </div>
@@ -5857,12 +5877,12 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 <pre><code># A tibble: 0 × 1
 # ℹ 1 variable: prey_latin_name &lt;chr&gt;</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb369"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb369-1"><a href="#cb369-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Only for litter: don&#39;t worry, no good LW relationship for it ...</span></span>
-<span id="cb369-2"><a href="#cb369-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb369-3"><a href="#cb369-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Plot size distribution by year</span></span>
-<span id="cb369-4"><a href="#cb369-4" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(d3, <span class="fu">aes</span>(<span class="at">x =</span> pred_length_cm, <span class="at">y =</span> <span class="fu">factor</span>(year), <span class="at">group =</span> year)) <span class="sc">+</span> </span>
-<span id="cb369-5"><a href="#cb369-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_density_ridges</span>(<span class="at">rel_min_height =</span> <span class="fl">0.01</span>, <span class="at">scale =</span> <span class="dv">4</span>, <span class="at">alpha =</span> <span class="fl">0.4</span>) <span class="sc">+</span></span>
-<span id="cb369-6"><a href="#cb369-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> predator_latin_name)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb373"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb373-1"><a href="#cb373-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Only for litter: don&#39;t worry, no good LW relationship for it ...</span></span>
+<span id="cb373-2"><a href="#cb373-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb373-3"><a href="#cb373-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Plot size distribution by year</span></span>
+<span id="cb373-4"><a href="#cb373-4" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(d3, <span class="fu">aes</span>(<span class="at">x =</span> pred_length_cm, <span class="at">y =</span> <span class="fu">factor</span>(year), <span class="at">group =</span> year)) <span class="sc">+</span> </span>
+<span id="cb373-5"><a href="#cb373-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_density_ridges</span>(<span class="at">rel_min_height =</span> <span class="fl">0.01</span>, <span class="at">scale =</span> <span class="dv">4</span>, <span class="at">alpha =</span> <span class="fl">0.4</span>) <span class="sc">+</span></span>
+<span id="cb373-6"><a href="#cb373-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> predator_latin_name)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>Picking joint bandwidth of 1.31</code></pre>
 </div>
@@ -5876,13 +5896,13 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 </figure>
 </div>
 </div>
-<div class="sourceCode cell-code" id="cb372"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb372-1"><a href="#cb372-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Plot size distribution of prey by year</span></span>
-<span id="cb372-2"><a href="#cb372-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
-<span id="cb372-3"><a href="#cb372-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">drop_na</span>(prey_weight_g) <span class="sc">%&gt;%</span> </span>
-<span id="cb372-4"><a href="#cb372-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_weight_g <span class="sc">&gt;</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span> </span>
-<span id="cb372-5"><a href="#cb372-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> prey_weight_g, <span class="at">y =</span> <span class="fu">factor</span>(year), <span class="at">group =</span> year)) <span class="sc">+</span> </span>
-<span id="cb372-6"><a href="#cb372-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_density_ridges</span>(<span class="at">rel_min_height =</span> <span class="fl">0.01</span>, <span class="at">scale =</span> <span class="dv">4</span>, <span class="at">alpha =</span> <span class="fl">0.4</span>) <span class="sc">+</span></span>
-<span id="cb372-7"><a href="#cb372-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_x_continuous</span>(<span class="at">trans =</span> <span class="st">&quot;log10&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb376"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb376-1"><a href="#cb376-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Plot size distribution of prey by year</span></span>
+<span id="cb376-2"><a href="#cb376-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
+<span id="cb376-3"><a href="#cb376-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">drop_na</span>(prey_weight_g) <span class="sc">%&gt;%</span> </span>
+<span id="cb376-4"><a href="#cb376-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(prey_weight_g <span class="sc">&gt;</span> <span class="dv">0</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb376-5"><a href="#cb376-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> prey_weight_g, <span class="at">y =</span> <span class="fu">factor</span>(year), <span class="at">group =</span> year)) <span class="sc">+</span> </span>
+<span id="cb376-6"><a href="#cb376-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_density_ridges</span>(<span class="at">rel_min_height =</span> <span class="fl">0.01</span>, <span class="at">scale =</span> <span class="dv">4</span>, <span class="at">alpha =</span> <span class="fl">0.4</span>) <span class="sc">+</span></span>
+<span id="cb376-7"><a href="#cb376-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_x_continuous</span>(<span class="at">trans =</span> <span class="st">&quot;log10&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>drop_na: no rows removed</code></pre>
 </div>
@@ -5899,12 +5919,12 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 </figure>
 </div>
 </div>
-<div class="sourceCode cell-code" id="cb376"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb376-1"><a href="#cb376-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check feeding ratios</span></span>
-<span id="cb376-2"><a href="#cb376-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
-<span id="cb376-3"><a href="#cb376-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">rel_weight =</span> prey_weight_g <span class="sc">/</span> pred_weight_g) <span class="sc">%&gt;%</span> </span>
-<span id="cb376-4"><a href="#cb376-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(rel_weight)) <span class="sc">%&gt;%</span></span>
-<span id="cb376-5"><a href="#cb376-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb376-6"><a href="#cb376-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb380"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb380-1"><a href="#cb380-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check feeding ratios</span></span>
+<span id="cb380-2"><a href="#cb380-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
+<span id="cb380-3"><a href="#cb380-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">rel_weight =</span> prey_weight_g <span class="sc">/</span> pred_weight_g) <span class="sc">%&gt;%</span> </span>
+<span id="cb380-4"><a href="#cb380-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(rel_weight)) <span class="sc">%&gt;%</span></span>
+<span id="cb380-5"><a href="#cb380-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb380-6"><a href="#cb380-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>mutate: new variable &#39;rel_weight&#39; (double) with 12,366 unique values and 0% NA</code></pre>
 </div>
@@ -6057,25 +6077,25 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 19        unique_id      43G7        Gadus morhua 0.07140000
 20        unique_id      40G6        Gadus morhua 0.07128000</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb379"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb379-1"><a href="#cb379-1" aria-hidden="true" tabindex="-1"></a>d3 <span class="ot">&lt;-</span> d3 <span class="sc">%&gt;%</span> </span>
-<span id="cb379-2"><a href="#cb379-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">rel_weight =</span> prey_weight_g <span class="sc">/</span> pred_weight_g) <span class="sc">%&gt;%</span> </span>
-<span id="cb379-3"><a href="#cb379-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(rel_weight <span class="sc">&lt;</span> <span class="fu">quantile</span>(rel_weight, <span class="at">probs =</span> <span class="fl">0.9999</span>)) <span class="co">#%&gt;% </span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb383"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb383-1"><a href="#cb383-1" aria-hidden="true" tabindex="-1"></a>d3 <span class="ot">&lt;-</span> d3 <span class="sc">%&gt;%</span> </span>
+<span id="cb383-2"><a href="#cb383-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">rel_weight =</span> prey_weight_g <span class="sc">/</span> pred_weight_g) <span class="sc">%&gt;%</span> </span>
+<span id="cb383-3"><a href="#cb383-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(rel_weight <span class="sc">&lt;</span> <span class="fu">quantile</span>(rel_weight, <span class="at">probs =</span> <span class="fl">0.9999</span>)) <span class="co">#%&gt;% </span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>mutate: new variable &#39;rel_weight&#39; (double) with 12,366 unique values and 0% NA</code></pre>
 </div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 10 rows (&lt;1%), 91,275 rows remaining</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb382"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb382-1"><a href="#cb382-1" aria-hidden="true" tabindex="-1"></a>  <span class="co">#arrange(desc(rel_weight)) %&gt;%</span></span>
-<span id="cb382-2"><a href="#cb382-2" aria-hidden="true" tabindex="-1"></a>  <span class="co">#as.data.frame() %&gt;% </span></span>
-<span id="cb382-3"><a href="#cb382-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">#head(20)</span></span>
-<span id="cb382-4"><a href="#cb382-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb382-5"><a href="#cb382-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Check catches</span></span>
-<span id="cb382-6"><a href="#cb382-6" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
-<span id="cb382-7"><a href="#cb382-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(mcod_kg_km2) <span class="sc">%&gt;%</span> </span>
-<span id="cb382-8"><a href="#cb382-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(mcod_kg_km2)) <span class="sc">%&gt;%</span></span>
-<span id="cb382-9"><a href="#cb382-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb382-10"><a href="#cb382-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb386"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb386-1"><a href="#cb386-1" aria-hidden="true" tabindex="-1"></a>  <span class="co">#arrange(desc(rel_weight)) %&gt;%</span></span>
+<span id="cb386-2"><a href="#cb386-2" aria-hidden="true" tabindex="-1"></a>  <span class="co">#as.data.frame() %&gt;% </span></span>
+<span id="cb386-3"><a href="#cb386-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">#head(20)</span></span>
+<span id="cb386-4"><a href="#cb386-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb386-5"><a href="#cb386-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Check catches</span></span>
+<span id="cb386-6"><a href="#cb386-6" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
+<span id="cb386-7"><a href="#cb386-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(mcod_kg_km2) <span class="sc">%&gt;%</span> </span>
+<span id="cb386-8"><a href="#cb386-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(mcod_kg_km2)) <span class="sc">%&gt;%</span></span>
+<span id="cb386-9"><a href="#cb386-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb386-10"><a href="#cb386-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>distinct: removed 90,948 rows (&gt;99%), 327 rows remaining</code></pre>
 </div>
@@ -6102,11 +6122,11 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 19    12723.58
 20    12710.97</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb385"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb385-1"><a href="#cb385-1" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
-<span id="cb385-2"><a href="#cb385-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(scod_kg_km2) <span class="sc">%&gt;%</span> </span>
-<span id="cb385-3"><a href="#cb385-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(scod_kg_km2)) <span class="sc">%&gt;%</span></span>
-<span id="cb385-4"><a href="#cb385-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb385-5"><a href="#cb385-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb389"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb389-1"><a href="#cb389-1" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
+<span id="cb389-2"><a href="#cb389-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(scod_kg_km2) <span class="sc">%&gt;%</span> </span>
+<span id="cb389-3"><a href="#cb389-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(scod_kg_km2)) <span class="sc">%&gt;%</span></span>
+<span id="cb389-4"><a href="#cb389-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb389-5"><a href="#cb389-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>distinct: removed 90,974 rows (&gt;99%), 301 rows remaining</code></pre>
 </div>
@@ -6133,11 +6153,11 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 19    5087.093
 20    4908.504</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb388"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb388-1"><a href="#cb388-1" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
-<span id="cb388-2"><a href="#cb388-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(fle_kg_km2) <span class="sc">%&gt;%</span> </span>
-<span id="cb388-3"><a href="#cb388-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(fle_kg_km2)) <span class="sc">%&gt;%</span></span>
-<span id="cb388-4"><a href="#cb388-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb388-5"><a href="#cb388-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb392"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb392-1"><a href="#cb392-1" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
+<span id="cb392-2"><a href="#cb392-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(fle_kg_km2) <span class="sc">%&gt;%</span> </span>
+<span id="cb392-3"><a href="#cb392-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(fle_kg_km2)) <span class="sc">%&gt;%</span></span>
+<span id="cb392-4"><a href="#cb392-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb392-5"><a href="#cb392-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>distinct: removed 90,927 rows (&gt;99%), 348 rows remaining</code></pre>
 </div>
@@ -6164,20 +6184,20 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 19   4648.049
 20   4582.677</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb391"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb391-1"><a href="#cb391-1" aria-hidden="true" tabindex="-1"></a>d4 <span class="ot">&lt;-</span> d3 <span class="sc">%&gt;%</span> </span>
-<span id="cb391-2"><a href="#cb391-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(mcod_kg_km2 <span class="sc">&lt;</span> <span class="dv">15000</span>,</span>
-<span id="cb391-3"><a href="#cb391-3" aria-hidden="true" tabindex="-1"></a>         scod_kg_km2 <span class="sc">&lt;</span> <span class="dv">15000</span>,</span>
-<span id="cb391-4"><a href="#cb391-4" aria-hidden="true" tabindex="-1"></a>         fle_kg_km2 <span class="sc">&lt;</span> <span class="dv">15000</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb395"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb395-1"><a href="#cb395-1" aria-hidden="true" tabindex="-1"></a>d4 <span class="ot">&lt;-</span> d3 <span class="sc">%&gt;%</span> </span>
+<span id="cb395-2"><a href="#cb395-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(mcod_kg_km2 <span class="sc">&lt;</span> <span class="dv">15000</span>,</span>
+<span id="cb395-3"><a href="#cb395-3" aria-hidden="true" tabindex="-1"></a>         scod_kg_km2 <span class="sc">&lt;</span> <span class="dv">15000</span>,</span>
+<span id="cb395-4"><a href="#cb395-4" aria-hidden="true" tabindex="-1"></a>         fle_kg_km2 <span class="sc">&lt;</span> <span class="dv">15000</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>filter: removed 4,949 rows (5%), 86,326 rows remaining</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb393"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb393-1"><a href="#cb393-1" aria-hidden="true" tabindex="-1"></a><span class="co"># How many unique predator lengths per sample (fish)?</span></span>
-<span id="cb393-2"><a href="#cb393-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
-<span id="cb393-3"><a href="#cb393-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(pred_id, year) <span class="sc">%&gt;%</span> <span class="co"># For each fish ID and pred_size, how many distinct sizes?</span></span>
-<span id="cb393-4"><a href="#cb393-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n_sizes =</span> <span class="fu">length</span>(<span class="fu">unique</span>(pred_length_cm))) <span class="sc">%&gt;%</span> </span>
-<span id="cb393-5"><a href="#cb393-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span> </span>
-<span id="cb393-6"><a href="#cb393-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(n_sizes, year) <span class="sc">%&gt;%</span> </span>
-<span id="cb393-7"><a href="#cb393-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb397"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb397-1"><a href="#cb397-1" aria-hidden="true" tabindex="-1"></a><span class="co"># How many unique predator lengths per sample (fish)?</span></span>
+<span id="cb397-2"><a href="#cb397-2" aria-hidden="true" tabindex="-1"></a>d3 <span class="sc">%&gt;%</span> </span>
+<span id="cb397-3"><a href="#cb397-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(pred_id, year) <span class="sc">%&gt;%</span> <span class="co"># For each fish ID and pred_size, how many distinct sizes?</span></span>
+<span id="cb397-4"><a href="#cb397-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n_sizes =</span> <span class="fu">length</span>(<span class="fu">unique</span>(pred_length_cm))) <span class="sc">%&gt;%</span> </span>
+<span id="cb397-5"><a href="#cb397-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">%&gt;%</span> </span>
+<span id="cb397-6"><a href="#cb397-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(n_sizes, year) <span class="sc">%&gt;%</span> </span>
+<span id="cb397-7"><a href="#cb397-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>group_by: 2 grouping variables (pred_id, year)</code></pre>
 </div>
@@ -6204,7 +6224,7 @@ $ predator_latin_name &lt;chr&gt; &quot;Platichthys flesus&quot;, &quot;Platicht
 </div>
 <p>Save and explore data in another script</p>
 <div class="cell" data-layout-align="center">
-<div class="sourceCode cell-code" id="cb399"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb399-1"><a href="#cb399-1" aria-hidden="true" tabindex="-1"></a><span class="fu">write_csv</span>(d3, <span class="fu">paste0</span>(home, <span class="st">&quot;/data/clean/full_stomach_data.csv&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb403"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb403-1"><a href="#cb403-1" aria-hidden="true" tabindex="-1"></a><span class="fu">write_csv</span>(d3, <span class="fu">paste0</span>(home, <span class="st">&quot;/data/clean/full_stomach_data.csv&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 </section>

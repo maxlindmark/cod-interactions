@@ -23,12 +23,6 @@ execute:
 #| message: false
 #| warning: false
 
-# Load libraries, install if needed
-pkgs <- c("tidyverse", "tidylog", "RCurl", "sdmTMB", "RColorBrewer", "devtools",
-          "patchwork")
-
-invisible(lapply(pkgs, library, character.only = T))
-
 # Load libraries
 library(tidyverse)
 library(tidylog)
