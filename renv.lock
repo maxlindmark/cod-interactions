@@ -2630,18 +2630,18 @@
     },
     "rnaturalearth": {
       "Package": "rnaturalearth",
-      "Version": "0.3.2",
+      "Version": "1.0.1",
       "Source": "Repository",
-      "Repository": "CRAN",
+      "Repository": "RSPM",
       "Requirements": [
         "R",
         "httr",
         "jsonlite",
         "sf",
-        "sp",
+        "terra",
         "utils"
       ],
-      "Hash": "c97d05220a4112f461eb940f2633d091"
+      "Hash": "741166cab0fe76d8a5670d3ee459a2a4"
     },
     "roxygen2": {
       "Package": "roxygen2",
@@ -2994,9 +2994,9 @@
     },
     "sp": {
       "Package": "sp",
-      "Version": "1.6-0",
+      "Version": "2.1-2",
       "Source": "Repository",
-      "Repository": "CRAN",
+      "Repository": "RSPM",
       "Requirements": [
         "R",
         "grDevices",
@@ -3007,7 +3007,7 @@
         "stats",
         "utils"
       ],
-      "Hash": "6674e075a078d9c3bde8ba800367347c"
+      "Hash": "40a9887191d33b2521a1d741f8c8aea2"
     },
     "statmod": {
       "Package": "statmod",
