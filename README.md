@@ -11,6 +11,6 @@ To simply view the analyses, download the .qmd or .html files. To reproduce the 
 
 2. Create a new RStudio project and clone your fork
 
-R-package dependencies and versions are handled with [`renv`](https://rstudio.github.io/renv/articles/renv.html). Simply run `renv::restore()` to install the correct versions of all the packages needed to replicate our results. Packages are installed in a stand-alone project library for this paper, and will not affect your installed R packages anywhere else.
+R-package dependencies and versions are handled with [`renv`](https://rstudio.github.io/renv/articles/renv.html). Simply run `renv::restore()` to install the correct versions of all the packages needed to replicate our results. Packages are installed in a stand-alone project library for this paper, and will not affect your installed R packages anywhere else. 
 
 Once you've successfully run `renv::restore()` you can reproduce our results by running R/main-analysis/food_competition.qmd and R/main-analysis/diet_overlap.qmd. You don't need to run the data preparation scripts but can jump straight to these since a trimmed and cleaned data ready for analysis are included in this repository (data/clean). Raw data needed to reproduce stomach cleaning scripts 01_collate_stomach_data.qmd and 02_summarise_stomach_data.qmd are not on GitHub but will be made available at the time of publication.
