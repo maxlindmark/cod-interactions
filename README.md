@@ -1,6 +1,6 @@
 # Materials for "Quantifying competition between two demersal fish species from spatiotemporal stomach content data"
 
-This repository contains all the materials needed to reproduce the manuscript "Quantifying competition between two demersal fish species
+This repository contains all the materials needed to reproduce the analysis in manuscript "Quantifying competition between two demersal fish species
 from spatiotemporal stomach content data" by Max Lindmark, Federico Maioli, Sean C. Anderson, Mayya Gogina, Mattias Sköld, Valerio Bartolino, Mikael Ohlsson, Anna Eklöf and Michele Casini.
 
 ## Setup
