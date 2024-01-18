@@ -2,6 +2,8 @@ library(sf)
 # Packages not on CRAN
 # devtools::install_github("seananderson/ggsidekick") # not on CRAN 
 library(ggsidekick)
+library(rnaturalearth)
+library(rnaturalearthdata)
 
 theme_set(theme_sleek())
 

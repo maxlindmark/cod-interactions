@@ -36,11 +36,12 @@ library(RCurl)
 library(devtools)
 
 # Source map-plot
-#source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
-source("R/functions/map-plot.R")
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+#source("R/functions/map-plot.R")
 
 # Source code for rotating ordination plot (to make it work in ggplot)
 source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/rotate.R")
+#source("R/functions/rotate.R")
 
 home <- here::here()
 ```
@@ -145,8 +146,8 @@ pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
 ordi <- ggplot(dd, aes(x = V1, y = V2, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")),
                        size = pred_length_cm)) +
   geom_point(alpha = 0.6) + 
-  stat_ellipse(aes(V1, V2, color = group), 
-               inherit.aes = FALSE, linewidth = 1, alpha = 0.3) + 
+  # stat_ellipse(aes(V1, V2, color = group), 
+  #              inherit.aes = FALSE, linewidth = 1, alpha = 0.3) + 
   scale_size_continuous(range = c(0.7, 3)) +
   scale_color_manual(values = pal) +
   scale_fill_manual(values = pal) + 
@@ -260,67 +261,4 @@ bar_diet <- ggplot(data = area_plot, aes(x = max_size, y = prop, fill = name, co
 bar_diet / ordi + plot_annotation(tag_levels = "A") + plot_layout(heights = c(1, 1.6))
 
 ggsave(paste0(home, "/figures/ordi_diet.pdf"), width = 17, height = 17, units = "cm")
-```
-
-## `nmds`?
-
-```{r nmds ordination}
-# Remove empty stomachs
-# 
-# d_mat2 <- d_mat %>%
-#   # remove empty stomachs?
-#   as.data.frame() %>% 
-#   mutate(sum = rowSums() %>%
-#   filter(sum > 0) %>%
-#   dplyr::select(-sum) %>% 
-#   mutate(id = 1:n())
-# 
-# 
-# mds <- metaMDS(d_mat)
-# 
-# plot(mds)
-# 
-# stressplot(mds)
-# 
-# meta <- scores(mds)$sites %>% 
-#   as_tibble(rownames = "id") %>% 
-#   inner_join(wide_non_zero_stom %>%
-#                dplyr::select(species, pred_length_cm, id) %>% 
-#                mutate(id = as.character(id)), by = "id") %>% 
-#   mutate(group = "Flounder",
-#          group = ifelse(species == "Cod" & pred_length_cm <  25, "Small cod", group),
-#          group = ifelse(species == "Cod" & pred_length_cm >= 25, "Large cod", group))
-# 
-# centroids <- meta %>% 
-#   group_by(group) %>% 
-#   summarise(NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
-# 
-# # https://chrischizinski.github.io/rstats/vegan-ggplot2/
-# species.scores <- as.data.frame(scores(mds, "species"))  #Using the scores function from vegan to extract the species scores and convert to a data.frame
-# species.scores$species <- rownames(species.scores)  # create a column of species, from the rownames of species.scores
-# 
-# species.scores <- species.scores %>% 
-#   filter(!species == "id") %>% 
-#   mutate(species = str_replace(species, "_", " "),
-#          species = str_replace(species, "_", " "),
-#          species = str_remove(species, " tot"),
-#          species = str_to_title(species))
-#   
-# meta %>% 
-#   ggplot(aes(NMDS1, NMDS2, shape = species, color = group, size = pred_length_cm)) + 
-#   scale_size_continuous(range = c(2, 6)) +
-#   stat_ellipse(aes(NMDS1, NMDS2, color = factor(group, levels = c("Small cod", "Large cod", "Flounder"))), 
-#                inherit.aes = FALSE, linewidth = 1.2, alpha = 0.5) +
-#   geom_point(alpha = 0.8) +
-#   geom_point(data = centroids, aes(NMDS1, NMDS2, shape = species,
-#                                    color = factor(group, levels = c("Small cod", "Large cod", "Flounder")),
-#                                    fill = factor(group, levels = c("Small cod", "Large cod", "Flounder"))), 
-#              shape = 21, size = 4, color = "grey20", stroke = 1.2, inherit.aes = FALSE) + 
-#   scale_color_brewer(palette = "Paired", name = "") +
-#   scale_fill_brewer(palette = "Paired", name = "") + 
-#   labs(size = "Predator length", shape = "Species") +
-#   geom_text_repel(box.padding = 0.5, data = species.scores, aes(x = NMDS1, y = NMDS2, label = species), color = "gray40",
-#             inherit.aes = FALSE, size = 3) +
-#   theme_sleek() +
-#   NULL
 ```

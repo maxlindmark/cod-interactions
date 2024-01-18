@@ -23,9 +23,7 @@ execute:
 #| message: false
 #| warning: false
 
-renv::install("INLA",repos=c(getOption("repos"),INLA="https://inla.r-inla-download.org/R/stable"), dep=TRUE) 
 library(INLA)
-
 library(tidyverse)
 library(tidylog)
 library(RCurl)
@@ -713,7 +711,6 @@ range_df %>%
 
 ggsave(paste0(home, "/figures/supp/ranges.pdf"), width = 11, height = 11, units = "cm")
 ```
-
 
 ## Plot residuals
 
