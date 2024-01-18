@@ -80,7 +80,7 @@
     "INLA": {
       "Package": "INLA",
       "Version": "23.09.09",
-      "Source": "unknown",
+      "Source": "https://inla.r-inla-download.org/R/stable",
       "Requirements": [
         "Matrix",
         "R",
