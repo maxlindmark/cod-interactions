@@ -285,6 +285,7 @@ for(i in unique(d$group)) {
     
   } else {
     
+    # If *NOT* large cod, the total model gets the first model object...
     m_tot_0 <- m_sad_0
     m_tot_1 <- m_sad_0
     m_tot_2 <- m_sad_0
