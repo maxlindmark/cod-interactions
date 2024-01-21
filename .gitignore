@@ -75,3 +75,7 @@ R/analysis/density_spatial_trend_models.html
 .Rproj.user
 
 .DS_Store
+
+# Old scripts
+*/test_inla_renv.R
+*/test.R
