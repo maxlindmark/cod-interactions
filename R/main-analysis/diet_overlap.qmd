@@ -23,6 +23,8 @@ execute:
 #| message: false
 #| warning: false
 
+home <- here::here()
+
 # Load libraries
 library(tidyverse)
 library(tidylog)
@@ -36,14 +38,12 @@ library(RCurl)
 library(devtools)
 
 # Source map-plot
-source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
-#source("R/functions/map-plot.R")
+#source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+source(paste0(home, "R/functions/map-plot.R"))
 
 # Source code for rotating ordination plot (to make it work in ggplot)
-source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/rotate.R")
-#source("R/functions/rotate.R")
-
-home <- here::here()
+#source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/rotate.R")
+source(paste0(home, "R/functions/rotate.R"))
 ```
 
 ## Read data

@@ -23,6 +23,8 @@ execute:
 #| message: false
 #| warning: false
 
+home <- here::here()
+
 library(INLA)
 library(tidyverse)
 library(tidylog)
@@ -37,9 +39,7 @@ library(sdmTMBextra)
 
 # Source map-plot
 #source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
-source("R/functions/map-plot.R")
-
-home <- here::here()
+source(paste0(home, "/R/functions/map-plot.R"))
 ```
 
 ## Read data & prepare data
