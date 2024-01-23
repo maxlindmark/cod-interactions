@@ -2,6 +2,7 @@
 title: "Collate stomach content data"
 author: "Max Lindmark"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
+toc: true
 format: 
   html:
     page-layout: full
@@ -36,8 +37,8 @@ library(raster)
 library(devtools)
 
 # Source code for map plots
-#source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
-source("R/functions/map-plot.R")
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+#source("R/functions/map-plot.R")
 
 home <- here::here()
 ```

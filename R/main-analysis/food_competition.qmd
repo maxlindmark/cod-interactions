@@ -2,6 +2,7 @@
 title: "Food competition analysis"
 author: "Max Lindmark"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
+toc: true
 format: 
   html:
     page-layout: full
@@ -16,6 +17,13 @@ execute:
   eval: true
   cache: false
 ---
+
+```{r}
+# TODO:
+# The spatial random effect flounder saduria model throws this error in renv:
+# Error in stats::nlminb(start = tmb_obj$par, objective = tmb_obj$fn, gradient = tmb_obj$gr,  : 
+```
+
 
 ## Load packages
 
@@ -38,8 +46,8 @@ library(ggh4x)
 library(sdmTMBextra)
 
 # Source map-plot
-#source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
-source(paste0(home, "/R/functions/map-plot.R"))
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+#source(paste0(home, "/R/functions/map-plot.R"))
 ```
 
 ## Read data & prepare data
@@ -119,7 +127,7 @@ Covariates are: \~ 0 + fyear + fquarter + depth_sc + spatial + spatiotemporal ra
 
 ### Compare models with different spatial terms and evaluate AIC
 
-```{r}
+```{r aic}
 aic_list <- list()
 
 for(i in unique(d$group)) {
@@ -328,7 +336,7 @@ daic %>%
 
 ## Main models
 
-```{r}
+```{r fit main models}
 pred_flounder_sad <- list()
 pred_flounder_ben <- list()
 pred_cod_sad <- list()
@@ -503,7 +511,7 @@ for(i in unique(d$group)) {
 
 ## Now do a separate model for adult cod looking at total prey
 
-```{r}
+```{r total prey adult cod}
 pred_flounder_tot <- list()
 pred_cod_tot <- list()
 coef_tot <- list()
@@ -584,7 +592,7 @@ range_tot <- list()
 
 ## Make dataframes
 
-```{r}
+```{r make data frame of model output}
 coef_df <- bind_rows(bind_rows(coef_sad) %>% mutate(model = "Saduria"),
                      bind_rows(coef_ben) %>% mutate(model = "Benthos"))
 
@@ -612,7 +620,7 @@ range_df <- bind_rows(bind_rows(range_tot), bind_rows(range_ben), bind_rows(rang
 
 ## Plot spatial random effects
 
-```{r}
+```{r spatial plots}
 random_df <- random_df %>%
   mutate(group = str_to_sentence(group))
 
@@ -696,7 +704,7 @@ ggsave(paste0(home, "/figures/supp/omega_tot.pdf"), width = 11, height = 9, unit
 
 ## Plot range
 
-```{r}
+```{r plot ranges}
 pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
 
 range_df %>% 
@@ -715,7 +723,7 @@ ggsave(paste0(home, "/figures/supp/ranges.pdf"), width = 11, height = 11, units 
 
 ## Plot residuals
 
-```{r}
+```{r plot residuals}
 # Plot residuals
 res_df |> 
   mutate(group = str_to_title(group)) |> 
@@ -731,7 +739,7 @@ ggsave(paste0(home, "/figures/supp/qq_relative_prey_weight.pdf"), width = 17, he
 
 ## Plot coefficients
 
-```{r}
+```{r plot coeffficients}
 coef_df$term %>% unique()
 
 pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
@@ -799,7 +807,7 @@ ggsave(paste0(home, "/figures/coefs.pdf"), width = 17, height = 13, units = "cm"
 
 ## Plot year and quarter coefficients
 
-```{r}
+```{r plot y q}
 # Fix some names
 coef_df3 <- coef_df %>%
   filter(grepl('year', term)) %>%
@@ -860,7 +868,7 @@ ggsave(paste0(home, "/figures/supp/coefs_quarter.pdf"), width = 17, height = 11,
 
 ## Conditional effects
 
-```{r}
+```{r plot conditional effects}
 # Which CI?
 # https://www.calculator.net/confidence-interval-calculator.html
 pred_df <- bind_rows(pred_cod_df, pred_flounder_df) %>%
@@ -979,12 +987,5 @@ Showing conditional effects of oxygeon on small cod feeding on benthos
     geom_vline(xintercept = 3.5, col = "red") +
     geom_vline(xintercept = 7.5, col = "red") + 
     NULL
-    
-  
-    
 ```
 
-
-```{r}
-knitr::knit_exit()
-```

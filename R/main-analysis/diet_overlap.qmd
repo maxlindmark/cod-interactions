@@ -2,6 +2,7 @@
 title: "Diet (dis)-similarity"
 author: "Max Lindmark"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
+toc: true
 format: 
   html:
     page-layout: full
@@ -38,12 +39,12 @@ library(RCurl)
 library(devtools)
 
 # Source map-plot
-#source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
-source(paste0(home, "R/functions/map-plot.R"))
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+#source(paste0(home, "R/functions/map-plot.R"))
 
 # Source code for rotating ordination plot (to make it work in ggplot)
-#source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/rotate.R")
-source(paste0(home, "R/functions/rotate.R"))
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/rotate.R")
+#source(paste0(home, "R/functions/rotate.R"))
 ```
 
 ## Read data
