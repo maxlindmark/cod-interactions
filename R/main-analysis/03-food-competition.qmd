@@ -118,212 +118,212 @@ Covariates are: \~ 0 + fyear + fquarter + depth_sc + spatial + spatiotemporal ra
 ```{r aic}
 #| include: false
 #| eval: false
-aic_list <- list()
-
-for(i in unique(d$group)) {
-  
-  dd <- filter(d, group == i)
-  
-  mesh <- make_mesh(dd,
-                    xy_cols = c("X", "Y"),
-                    cutoff = 10)
-
-  print(i)
-  
-  # Saduria model - non spatial
-  m_sad_0 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*density_saduria_sc + 
-                      flounder_density_sc*density_saduria_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "off", 
-                    spatial = "off",
-                    time = "year")
-  
-  sanity(m_sad_0)
-  
-  # Saduria model - spatial
-  m_sad_1 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*density_saduria_sc + 
-                      flounder_density_sc*density_saduria_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "off", 
-                    spatial = "on",
-                    time = "year")
-  
-  sanity(m_sad_1)
-  
-  # Saduria model - spatiotemporal
-  m_sad_2 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*density_saduria_sc + 
-                      flounder_density_sc*density_saduria_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "IID", 
-                    spatial = "off",
-                    time = "year")
-  
-  sanity(m_sad_2)
-  
-  # Saduria model - spatial and spatiotemporal
-  m_sad_3 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*density_saduria_sc + 
-                      flounder_density_sc*density_saduria_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "IID", 
-                    spatial = "on",
-                    time = "year")
-  
-  sanity(m_sad_3)
-  
-  
-  
-  # Benthos model - non spatial
-  m_ben_0 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "off", 
-                    spatial = "off",
-                    time = "year")
-  
-  sanity(m_ben_0)
-  
-  # Benthos model - spatial
-  m_ben_1 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "off", 
-                    spatial = "on",
-                    time = "year")
-  
-  sanity(m_ben_1)
-  
-  
-  # Benthos model - spatiotemporal
-  m_ben_2 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "IID", 
-                    spatial = "off",
-                    time = "year")
-  
-  sanity(m_ben_2)
-  
-  
-  # Benthos model - spatial and spatiotemporal
-  m_ben_3 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "IID", 
-                    spatial = "on",
-                    time = "year")
-  
-  sanity(m_ben_3)
-  
-  
-  # Total model for adult cod only
-  
-  if(unique(dd$group) == "large cod") {
-    
-    m_tot_0 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "off", 
-                    spatial = "off",
-                    time = "year")
-    
-    sanity(m_tot_0)
-    
-    m_tot_1 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "off", 
-                    spatial = "on",
-                    time = "year")
-    
-    sanity(m_tot_1)
-  
-    m_tot_2 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "IID", 
-                    spatial = "off",
-                    time = "year")
-    
-    sanity(m_tot_2)
-    
-    m_tot_3 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
-                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
-                    data = dd,
-                    mesh = mesh,
-                    family = tweedie(),
-                    spatiotemporal = "IID", 
-                    spatial = "on",
-                    time = "year")
-    
-    sanity(m_tot_3)
-    
-  } else {
-    
-    # If *NOT* large cod, the total model gets the first model object...
-    m_tot_0 <- m_sad_0
-    m_tot_1 <- m_sad_0
-    m_tot_2 <- m_sad_0
-    m_tot_3 <- m_sad_0
-    
-  }
-  
-  # Combine all AIC values
-  aic <- data.frame(response = rep(c("sad", "ben", "tot"), times = 4), 
-                    group = i,
-                    model = rep(c("non-spatial", "spatial", "spatiotemporal", "spatial and spatiotemporal"), each = 3),
-                    aic = c(AIC(m_sad_0), AIC(m_ben_0), AIC(m_tot_0),
-                            AIC(m_sad_1), AIC(m_ben_1), AIC(m_tot_1),
-                            AIC(m_sad_2), AIC(m_ben_2), AIC(m_tot_2),
-                            AIC(m_sad_3), AIC(m_ben_3), AIC(m_tot_3)))
-  
-  aic_list[[i]] <- aic
-
-}
-
-daic <- bind_rows(aic_list) %>% 
-  mutate(keep = ifelse(response == "tot" & !group == "large cod", "N", "Y")) %>% 
-  filter(keep == "Y") %>% 
-  dplyr::select(-keep) %>% 
-  group_by(response, group) %>% 
-  mutate(delta_aic = aic - min(aic))
-
-ggplot(daic, aes(group, delta_aic, color = model)) +
-  geom_point(position = position_dodge2(width = 0.1)) +
-  facet_wrap(~response) +
-  scale_color_brewer(palette = "Dark2") +
-  theme(legend.position = "bottom")
-
-# Make this a table
-daic %>% 
-  dplyr::select(-aic) %>% 
-  arrange(response) %>% 
-  pivot_wider(names_from = model, values_from = delta_aic)
+# aic_list <- list()
+# 
+# for(i in unique(d$group)) {
+#   
+#   dd <- filter(d, group == i)
+#   
+#   mesh <- make_mesh(dd,
+#                     xy_cols = c("X", "Y"),
+#                     cutoff = 10)
+# 
+#   print(i)
+#   
+#   # Saduria model - non spatial
+#   m_sad_0 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*density_saduria_sc + 
+#                       flounder_density_sc*density_saduria_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "off", 
+#                     spatial = "off",
+#                     time = "year")
+#   
+#   sanity(m_sad_0)
+#   
+#   # Saduria model - spatial
+#   m_sad_1 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*density_saduria_sc + 
+#                       flounder_density_sc*density_saduria_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "off", 
+#                     spatial = "on",
+#                     time = "year")
+#   
+#   sanity(m_sad_1)
+#   
+#   # Saduria model - spatiotemporal
+#   m_sad_2 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*density_saduria_sc + 
+#                       flounder_density_sc*density_saduria_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "IID", 
+#                     spatial = "off",
+#                     time = "year")
+#   
+#   sanity(m_sad_2)
+#   
+#   # Saduria model - spatial and spatiotemporal
+#   m_sad_3 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*density_saduria_sc + 
+#                       flounder_density_sc*density_saduria_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "IID", 
+#                     spatial = "on",
+#                     time = "year")
+#   
+#   sanity(m_sad_3)
+#   
+#   
+#   
+#   # Benthos model - non spatial
+#   m_ben_0 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "off", 
+#                     spatial = "off",
+#                     time = "year")
+#   
+#   sanity(m_ben_0)
+#   
+#   # Benthos model - spatial
+#   m_ben_1 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "off", 
+#                     spatial = "on",
+#                     time = "year")
+#   
+#   sanity(m_ben_1)
+#   
+#   
+#   # Benthos model - spatiotemporal
+#   m_ben_2 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "IID", 
+#                     spatial = "off",
+#                     time = "year")
+#   
+#   sanity(m_ben_2)
+#   
+#   
+#   # Benthos model - spatial and spatiotemporal
+#   m_ben_3 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "IID", 
+#                     spatial = "on",
+#                     time = "year")
+#   
+#   sanity(m_ben_3)
+#   
+#   
+#   # Total model for adult cod only
+#   
+#   if(unique(dd$group) == "large cod") {
+#     
+#     m_tot_0 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "off", 
+#                     spatial = "off",
+#                     time = "year")
+#     
+#     sanity(m_tot_0)
+#     
+#     m_tot_1 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "off", 
+#                     spatial = "on",
+#                     time = "year")
+#     
+#     sanity(m_tot_1)
+#   
+#     m_tot_2 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "IID", 
+#                     spatial = "off",
+#                     time = "year")
+#     
+#     sanity(m_tot_2)
+#     
+#     m_tot_3 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + #(1|fhaul_id) +
+#                       small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+#                     data = dd,
+#                     mesh = mesh,
+#                     family = tweedie(),
+#                     spatiotemporal = "IID", 
+#                     spatial = "on",
+#                     time = "year")
+#     
+#     sanity(m_tot_3)
+#     
+#   } else {
+#     
+#     # If *NOT* large cod, the total model gets the first model object...
+#     m_tot_0 <- m_sad_0
+#     m_tot_1 <- m_sad_0
+#     m_tot_2 <- m_sad_0
+#     m_tot_3 <- m_sad_0
+#     
+#   }
+#   
+#   # Combine all AIC values
+#   aic <- data.frame(response = rep(c("sad", "ben", "tot"), times = 4), 
+#                     group = i,
+#                     model = rep(c("non-spatial", "spatial", "spatiotemporal", "spatial and spatiotemporal"), each = 3),
+#                     aic = c(AIC(m_sad_0), AIC(m_ben_0), AIC(m_tot_0),
+#                             AIC(m_sad_1), AIC(m_ben_1), AIC(m_tot_1),
+#                             AIC(m_sad_2), AIC(m_ben_2), AIC(m_tot_2),
+#                             AIC(m_sad_3), AIC(m_ben_3), AIC(m_tot_3)))
+#   
+#   aic_list[[i]] <- aic
+# 
+# }
+# 
+# daic <- bind_rows(aic_list) %>% 
+#   mutate(keep = ifelse(response == "tot" & !group == "large cod", "N", "Y")) %>% 
+#   filter(keep == "Y") %>% 
+#   dplyr::select(-keep) %>% 
+#   group_by(response, group) %>% 
+#   mutate(delta_aic = aic - min(aic))
+# 
+# ggplot(daic, aes(group, delta_aic, color = model)) +
+#   geom_point(position = position_dodge2(width = 0.1)) +
+#   facet_wrap(~response) +
+#   scale_color_brewer(palette = "Dark2") +
+#   theme(legend.position = "bottom")
+# 
+# # Make this a table
+# daic %>% 
+#   dplyr::select(-aic) %>% 
+#   arrange(response) %>% 
+#   pivot_wider(names_from = model, values_from = delta_aic)
 ```
 
 ### Main models
@@ -357,21 +357,21 @@ for(i in unique(d$group)) {
     annotate("text", -Inf, Inf, label = paste("n knots =", mesh$mesh$n), hjust = -0.3, vjust = 3) + 
     labs(x = "Easting (km)", y = "Northing (km)")
   
-  ggsave(paste0(home, "/figures/supp/meshes/mesh_", i, ".pdf"), width = 17, height = 17, units = "cm")
+  ggsave(paste0(home, "/figures/supp/mesh_", i, ".pdf"), width = 17, height = 17, units = "cm")
   
   
+  # Saduria model
   
-  if(unique(dd$group) == "small cod") {
+  if(unique(dd$group) == "flounder") {
     
-    # Saduria model
     m_sad <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + 
                       small_cod_density_sc*density_saduria_sc + 
                       flounder_density_sc*density_saduria_sc,
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
-                    spatiotemporal = "off", # st off
-                    spatial = "on",
+                    spatiotemporal = "IID",
+                    spatial = "off",
                     time = "year")
     print(i)
     sanity(m_sad)
@@ -379,7 +379,6 @@ for(i in unique(d$group)) {
     
   } else {
     
-    # Saduria model
     m_sad <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + 
                       small_cod_density_sc*density_saduria_sc + 
                       flounder_density_sc*density_saduria_sc,
@@ -396,9 +395,11 @@ for(i in unique(d$group)) {
     }
 
   
-    if(unique(dd$group) %in% c("flounder", "small cod")) {
+  # Benthic model
+  
+    if(unique(dd$group) %in% c("large cod", "small cod")) {
       
-      # Benthic model
+      
       m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
                         small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
                       data = dd,
@@ -413,7 +414,6 @@ for(i in unique(d$group)) {
       
     } else {
       
-      # Benthic model
       m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
                         small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
                       data = dd,
@@ -522,14 +522,6 @@ for(i in unique(d$group)) {
 ### Now do a separate model for adult cod looking at total prey
 
 ```{r total prey adult cod}
-pred_flounder_tot <- list()
-pred_cod_tot <- list()
-coef_tot <- list()
-res_tot <- list()
-random_tot <- list()
-range_tot <- list()
-
-
   dd <- filter(d, group == "large cod")
   
   mesh <- make_mesh(dd,
@@ -558,24 +550,13 @@ range_tot <- list()
   res_tot <- dd
   
   # Range
-  range_tot[[i]] <- tidy(m_tot, effects = "ran_pars") %>% filter(term == "range") %>% mutate(group = i, model = "total")
+  range_tot <- tidy(m_tot, effects = "ran_pars") %>% filter(term == "range") %>% mutate(group = "large cod", model = "total")
 
   # Spatial and spatiotemporal random effects
   d_haul <- dd %>% 
     distinct(haul_id, .keep_all = TRUE)
   
   preds_tot <- predict(m_tot, newdata = d_haul)
-  
-  plot_map_fc + 
-    geom_point(data = preds_tot, aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) + 
-    scale_color_gradient2() +
-    facet_wrap(~ year) +
-    labs(color = "Spatiotemporal\nrandom effect") +
-    theme(legend.position = c(0.84, 0.16),
-          axis.text.x = element_text(angle = 90))
-  
-  ggsave(paste0(home, "/figures/supp/epsilon_tot_", "large cod", ".pdf"), width = 17, height = 17, units = "cm")
-  
   
   # Coefficients
   coefs_tot <- bind_rows(tidy(m_tot, effects = "fixed", conf.int = TRUE)) %>% 
@@ -613,7 +594,7 @@ random_df <- bind_rows(bind_rows(random_sad) %>% mutate(model = "Saduria"),
 
 random_df <- random_df %>% bind_rows(preds_tot %>% mutate(model = "Total"))
 
-range_df <- bind_rows(bind_rows(range_tot), bind_rows(range_ben), bind_rows(range_sad))
+range_df <- bind_rows(range_tot, bind_rows(range_ben), bind_rows(range_sad))
 ```
 
 ## Plot spatial random effects
@@ -622,8 +603,9 @@ range_df <- bind_rows(bind_rows(range_tot), bind_rows(range_ben), bind_rows(rang
 random_df <- random_df %>%
   mutate(group = str_to_sentence(group))
 
+# Saduria
 sad_omega <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Saduria"), aes(X*1000, Y*1000, color = omega_s), size = 0.9) +
+  geom_point(data = random_df %>% filter(model == "Saduria" & !group == "Flounder"), aes(X*1000, Y*1000, color = omega_s), size = 0.9) +
   scale_color_gradient2() +
   facet_wrap(~ group) +
   labs(color = "Spatial\nrandom effect") +
@@ -636,9 +618,9 @@ sad_omega <- plot_map_fc +
 ggsave(paste0(home, "/figures/supp/omega_sad.pdf"), width = 17, height = 7, units = "cm")
 
 
-# Now do benthos (only for large cod)
+# Now do benthos (only for flounder)
 ben_omega <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Large cod"), aes(X*1000, Y*1000, color = omega_s), size = 0.9) +
+  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Flounder"), aes(X*1000, Y*1000, color = omega_s), size = 0.9) +
   scale_color_gradient2() +
   facet_wrap(~ group) +
   labs(color = "Spatial\nrandom effect") +
@@ -657,34 +639,91 @@ ggsave(paste0(home, "/figures/supp/omega_ben.pdf"), width = 11, height = 11, uni
 
 ```{r}
 # Saduria
-sad_eps <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Saduria" & !group == "Small cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+sad_eps_sc <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Saduria" & group == "Small cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
   scale_color_gradient2() +
-  facet_wrap(~ group) +
+  facet_wrap(~ year) +
   labs(color = "Spatiotemporal\nrandom effect") +
-  theme(axis.text.x = element_text(angle = 90),
-        legend.position = "right",
-        legend.direction = "vertical",
-        legend.key.width = unit(0.4, "cm"),
-        legend.key.height = unit(0.4, "cm"))
+  theme(legend.position = c(0.84, 0.16),
+        axis.text.x = element_text(angle = 90))
 
-sad_eps
+sad_eps_sc
 
-ggsave(paste0(home, "/figures/supp/epsilon_sad.pdf"), width = 17, height = 7, units = "cm")
+ggsave(paste0(home, "/figures/supp/epsilon_sad_small_cod.pdf"), width = 17, height = 17, units = "cm")
+
+sad_eps_lc <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Saduria" & group == "Large cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+  scale_color_gradient2() +
+  facet_wrap(~ year) +
+  labs(color = "Spatiotemporal\nrandom effect") +
+  theme(legend.position = c(0.84, 0.16),
+        axis.text.x = element_text(angle = 90))
+
+sad_eps_lc
+
+ggsave(paste0(home, "/figures/supp/epsilon_sad_large_cod.pdf"), width = 17, height = 17, units = "cm")
+
+sad_eps_f <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Saduria" & group == "Flounder"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+  scale_color_gradient2() +
+  facet_wrap(~ year) +
+  labs(color = "Spatiotemporal\nrandom effect") +
+  theme(legend.position = c(0.84, 0.16),
+        axis.text.x = element_text(angle = 90))
+
+sad_eps_f
+
+ggsave(paste0(home, "/figures/supp/epsilon_sad_flounder.pdf"), width = 17, height = 17, units = "cm")
+
 
 # Benthos
-ben_eps <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Benthos"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+ben_eps_sc <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Small cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
   scale_color_gradient2() +
-  facet_wrap(~ group) +
+  facet_wrap(~ year) +
   labs(color = "Spatiotemporal\nrandom effect") +
-  theme(axis.text.x = element_text(angle = 90),
-        legend.position = "right",
-        legend.direction = "vertical",
-        legend.key.width = unit(0.4, "cm"),
-        legend.key.height = unit(0.4, "cm"))
+  theme(legend.position = c(0.84, 0.16),
+        axis.text.x = element_text(angle = 90))
 
-ben_eps
+ben_eps_sc
+
+ggsave(paste0(home, "/figures/supp/epsilon_ben_small_cod.pdf"), width = 17, height = 17, units = "cm")
+
+ben_eps_lc <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Large cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+  scale_color_gradient2() +
+  facet_wrap(~ year) +
+  labs(color = "Spatiotemporal\nrandom effect") +
+  theme(legend.position = c(0.84, 0.16),
+        axis.text.x = element_text(angle = 90))
+
+ben_eps_lc
+
+ggsave(paste0(home, "/figures/supp/epsilon_ben_large_cod.pdf"), width = 17, height = 17, units = "cm")
+
+ben_eps_f <- plot_map_fc +
+  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Flounder"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+  scale_color_gradient2() +
+  facet_wrap(~ year) +
+  labs(color = "Spatiotemporal\nrandom effect") +
+  theme(legend.position = c(0.84, 0.16),
+        axis.text.x = element_text(angle = 90))
+
+ben_eps_f
+
+ggsave(paste0(home, "/figures/supp/epsilon_ben_flounder.pdf"), width = 17, height = 17, units = "cm")
+
+
+# Total
+tot_eps <- plot_map_fc + 
+    geom_point(data = preds_tot, aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) + 
+    scale_color_gradient2() +
+    facet_wrap(~ year) +
+    labs(color = "Spatiotemporal\nrandom effect") +
+    theme(legend.position = c(0.84, 0.16),
+          axis.text.x = element_text(angle = 90))
+
+tot_eps
 ```
 
 ## Plot range
