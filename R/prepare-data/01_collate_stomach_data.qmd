@@ -394,7 +394,7 @@ bio_data <- bind_rows(trawl_surveys_s_cod, trawl_surveys_s_flounder) %>%
   clean_names()
 ```
 
-## Join trawl and biological data, and then stomach
+# Join trawl and biological data, and then stomach
 
 ```{r join trawl and biological}
 # Join the trawl, bio and stomach data. First create a unique ID.

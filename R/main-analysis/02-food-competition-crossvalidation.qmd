@@ -1,5 +1,5 @@
 ---
-title: "Food competition analysis"
+title: "Food competition analysis - cross validation"
 author: "Max Lindmark"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 format: 
@@ -99,7 +99,7 @@ for(i in unique(d$group)) {
     
   mesh <- make_mesh(dd,
                     xy_cols = c("X", "Y"),
-                    cutoff = 15)
+                    cutoff = 10)
   
   # Saduria model - non spatial
   m_sad_0 <- sdmTMB_cv(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc +

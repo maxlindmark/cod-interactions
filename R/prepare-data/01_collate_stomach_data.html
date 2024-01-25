@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Max Lindmark">
-<meta name="dcterms.date" content="2024-01-23">
+<meta name="dcterms.date" content="2024-01-24">
 
 <title>Collate stomach content data</title>
 <style>
@@ -3073,7 +3073,9 @@ vertical-align: -.125em;
   <li><a href="#stomach" id="toc-stomach" class="nav-link" data-scroll-target="#stomach">Stomach</a></li>
   <li><a href="#trawl" id="toc-trawl" class="nav-link" data-scroll-target="#trawl">Trawl</a></li>
   <li><a href="#biological-data" id="toc-biological-data" class="nav-link" data-scroll-target="#biological-data">Biological data</a></li>
-  <li><a href="#join-trawl-and-biological-data-and-then-stomach" id="toc-join-trawl-and-biological-data-and-then-stomach" class="nav-link" data-scroll-target="#join-trawl-and-biological-data-and-then-stomach">Join trawl and biological data, and then stomach</a></li>
+  </ul></li>
+  <li><a href="#join-trawl-and-biological-data-and-then-stomach" id="toc-join-trawl-and-biological-data-and-then-stomach" class="nav-link" data-scroll-target="#join-trawl-and-biological-data-and-then-stomach">Join trawl and biological data, and then stomach</a>
+  <ul class="collapse">
   <li><a href="#check-complete-data" id="toc-check-complete-data" class="nav-link" data-scroll-target="#check-complete-data">Check complete data</a></li>
   </ul></li>
   </ul>
@@ -3100,7 +3102,7 @@ vertical-align: -.125em;
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">January 23, 2024</p>
+      <p class="date">January 24, 2024</p>
     </div>
   </div>
   
@@ -4160,8 +4162,9 @@ date  (1): Date
 <span id="cb101-5"><a href="#cb101-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">clean_names</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
-<section id="join-trawl-and-biological-data-and-then-stomach" class="level2">
-<h2 class="anchored" data-anchor-id="join-trawl-and-biological-data-and-then-stomach">Join trawl and biological data, and then stomach</h2>
+</section>
+<section id="join-trawl-and-biological-data-and-then-stomach" class="level1">
+<h1>Join trawl and biological data, and then stomach</h1>
 <div class="cell" data-layout-align="center">
 <div class="sourceCode cell-code" id="cb102"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb102-1"><a href="#cb102-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Join the trawl, bio and stomach data. First create a unique ID.</span></span>
 <span id="cb102-2"><a href="#cb102-2" aria-hidden="true" tabindex="-1"></a><span class="co"># In earlier versions I had a column called otolith number (fish ID!), which was really fish id, but it isn&#39;t here anymore.</span></span>
@@ -5726,7 +5729,6 @@ date  (1): Date
 <pre><code>mutate: new variable &#39;predator_latin_name&#39; (character) with 2 unique values and 0% NA</code></pre>
 </div>
 </div>
-</section>
 <section id="check-complete-data" class="level2">
 <h2 class="anchored" data-anchor-id="check-complete-data">Check complete data</h2>
 <p>Rename some columns and do a brief quality check</p>
