@@ -139,10 +139,11 @@ dd <- LVs2$sites %>%
          group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
          group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group))
 
-# Alternative pallettes for the groups
-#pal <- (brewer.pal(n = 8, name = "Dark2")[c(5, 7, 6)])
+# Alternative palettes for the groups
+pal <- (brewer.pal(n = 11, name = "RdYlBu")[c(11, 4, 1)])
+#pal <- (brewer.pal(n = 11, name = "RdYlGn")[c(11, 4, 1)])
 #pal <- (brewer.pal(n = 8, name = "Dark2")[c(8, 7, 6)])
-pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
+#pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
 
 ordi <- ggplot(dd, aes(x = V1, y = V2, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")),
                        size = pred_length_cm)) +
@@ -259,6 +260,8 @@ bar_diet <- ggplot(data = area_plot, aes(x = max_size, y = prop, fill = name, co
 ## Combine plots
 
 ```{r}
+#| fig-height: 8
+
 bar_diet / ordi + plot_annotation(tag_levels = "A") + plot_layout(heights = c(1, 1.6))
 
 ggsave(paste0(home, "/figures/ordi_diet.pdf"), width = 17, height = 17, units = "cm")

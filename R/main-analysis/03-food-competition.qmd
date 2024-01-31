@@ -638,6 +638,8 @@ ggsave(paste0(home, "/figures/supp/omega_ben.pdf"), width = 11, height = 11, uni
 ## Plot spatiotemporal random effects
 
 ```{r}
+#| fig-width: 10
+
 # Saduria
 sad_eps_sc <- plot_map_fc +
   geom_point(data = random_df %>% filter(model == "Saduria" & group == "Small cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
@@ -729,12 +731,13 @@ tot_eps
 ## Plot range
 
 ```{r plot ranges}
-pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
+#pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
+pal <- (brewer.pal(n = 11, name = "RdYlBu")[c(11, 4, 1)])
 
 range_df %>% 
   mutate(group = str_to_sentence(group),
          model = str_to_sentence(model)) %>% 
-  ggplot(aes(model, estimate, color = group)) + 
+  ggplot(aes(model, estimate, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) + 
   geom_point(size = 2) +
   geom_hline(yintercept = 10, linetype = 2, alpha = 0.5) +
   scale_color_manual(values = pal) + 
@@ -766,8 +769,6 @@ ggsave(paste0(home, "/figures/supp/qq_relative_prey_weight.pdf"), width = 17, he
 ```{r plot coeffficients}
 coef_df$term %>% unique()
 
-pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
-
 # Fix some names
 coef_df2 <- coef_df %>%
   filter(!grepl('year', term)) %>%
@@ -782,7 +783,8 @@ coef_df2 <- coef_df %>%
          group = str_to_sentence(group))
 
 
-ggplot(coef_df2, aes(estimate, term, color = group, alpha = sig)) +
+ggplot(coef_df2, aes(estimate, term, alpha = sig,
+                     color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
   geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
   facet_wrap2(~model, ncol = 2, scales = "free") +
   geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
@@ -805,7 +807,9 @@ ggsave(paste0(home, "/figures/coefs.pdf"), width = 17, height = 13, units = "cm"
 
 ## Plot year and quarter coefficients
 
-```{r plot y q}
+```{r plot year effect}
+#| fig-height: 8
+
 # Fix some names
 coef_df3 <- coef_df %>%
   filter(grepl('year', term)) %>%
@@ -813,7 +817,8 @@ coef_df3 <- coef_df %>%
          group = str_to_sentence(group),
          term = as.numeric(term))
 
-ggplot(coef_df3, aes(term, estimate, color = group, fill = group)) +
+ggplot(coef_df3, aes(term, estimate, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")), 
+                     fill = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
   facet_wrap(~model, scales = "free", ncol = 1) +
   geom_line(position = position_dodge(width = 0.5)) +
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2, color = NA) +
@@ -830,14 +835,16 @@ ggplot(coef_df3, aes(term, estimate, color = group, fill = group)) +
   NULL
 
 ggsave(paste0(home, "/figures/supp/coefs_year.pdf"), width = 11, height = 21, units = "cm")
+```
 
-
+```{r quarter effect}
 # Now do quarter
 coef_df5 <- coef_df %>%
   filter(term %in% c("fquarter4")) %>% 
   mutate(group = str_to_sentence(group))
 
-ggplot(coef_df5, aes(estimate, model, color = group, alpha = sig)) +
+ggplot(coef_df5, aes(estimate, model, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")),
+                     alpha = sig)) +
   geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
   geom_point(position = position_dodge(width = 0.5), size = 1.5) +
   geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
