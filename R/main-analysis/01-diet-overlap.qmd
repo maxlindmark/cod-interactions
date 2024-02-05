@@ -226,17 +226,18 @@ area_plot %>% distinct(name)
 
 # Dataframes for geom_text with sample size
 n_cod <- d2 %>%
+  filter(species == "Cod") %>% 
   mutate(pred_length_cm2 = ifelse(pred_length_cm > max_size_cod, max_size_cod -1, pred_length_cm)) %>% 
   mutate(predator_length_grp = cut(pred_length_cm2, breaks = seq(0, 100, by = 5))) %>% 
   group_by(predator_length_grp) %>%
   summarise(n = length(unique(pred_id)))
 
 n_fle <- d2 %>%
+  filter(species == "Flounder") %>% 
   mutate(pred_length_cm2 = ifelse(pred_length_cm > max_size_fle, max_size_fle-1, pred_length_cm)) %>% 
   mutate(predator_length_grp = cut(pred_length_cm2, breaks = seq(0, 100, by = 5))) %>% 
   group_by(predator_length_grp) %>%
-  summarise(n = length(unique(pred_id))) %>% 
-  filter(!predator_length_grp == "(0,5]")
+  summarise(n = length(unique(pred_id)))
 
 n_dat <- bind_rows(n_cod %>% mutate(predator = "Cod"), 
                    n_fle %>% mutate(predator = "Flounder")) %>% 
