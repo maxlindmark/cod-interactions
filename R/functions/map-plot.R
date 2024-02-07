@@ -13,7 +13,7 @@ sf::sf_use_s2(FALSE)
 ymin = 52; ymax = 60.75; xmin = 10; xmax = 24
 
 map_data <- rnaturalearth::ne_countries(
-  scale = "medium",
+  scale = "large",
   returnclass = "sf", continent = "europe")
 
 # Crop the polygon for plotting and efficiency:
