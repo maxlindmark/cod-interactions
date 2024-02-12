@@ -1,7 +1,9 @@
 ---
 title: "Food competition analysis - cross validation"
 author: "Max Lindmark"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
+date: today
+date-format: iso
+toc: true
 format: 
   html:
     page-layout: full
@@ -9,12 +11,8 @@ format:
 knitr: 
   opts_chunk:
     fig.align: center
-    out-width: 80%
+    out-width: 100%
 editor: source
-execute: 
-  echo: true
-  eval: true
-  cache: false
 ---
   
 ## Load packages

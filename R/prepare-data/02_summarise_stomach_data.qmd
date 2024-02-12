@@ -1,7 +1,8 @@
 ---
 title: "Summarise stomach content data"
 author: "Max Lindmark"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
+date: today
+date-format: iso
 toc: true
 format: 
   html:
@@ -10,12 +11,8 @@ format:
 knitr: 
   opts_chunk:
     fig.align: center
-    out-width: 80%
+    out-width: 100%
 editor: source
-execute: 
-  echo: true
-  eval: true
-  cache: false
 ---
 
 ## Load packages
@@ -106,16 +103,18 @@ colnames(d_wide2 %>% dplyr::select(-pred_id))
 
 t <- d_wide2 %>%
   dplyr::select(-pred_id) %>% 
-  mutate(all_cat_sum = rowSums(.[1:100]),
-         group_sum = rowSums(.[101:115])) %>% 
+  mutate(all_cat_sum = rowSums(.[1:101]),
+         group_sum = rowSums(.[102:116])) %>% 
   dplyr::select(all_cat_sum, group_sum) %>%
   filter(!all_cat_sum == group_sum)  
+
+identical(t$all_cat_sum, t$group_sum)
 
 # Must be some rounding error...
 d_wide2 %>%
   dplyr::select(-pred_id) %>% 
-  mutate(all_cat_sum = rowSums(.[1:100]),
-         group_sum = rowSums(.[101:115])) %>% 
+  mutate(all_cat_sum = rowSums(.[1:101]),
+         group_sum = rowSums(.[102:116])) %>% 
   dplyr::select(all_cat_sum, group_sum) %>%
   ggplot(aes(all_cat_sum, group_sum)) +
   geom_point() +

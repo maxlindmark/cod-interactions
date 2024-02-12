@@ -2,7 +2,8 @@
 title: "Join CTD and stomach data"
 subtitle: "*'Tidy datasets are all alike but every messy dataset is messy in its own way'*"
 author: "Max Lindmark"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
+date: today
+date-format: iso
 toc: true
 format: 
   html:
@@ -11,18 +12,14 @@ format:
 knitr: 
   opts_chunk:
     fig.align: center
-    out-width: 80%
+    out-width: 100%
 editor: source
-execute: 
-  echo: true
-  eval: true
-  cache: false
-  message: false
-  warning: false
+warning: false
 ---
 
 Here I will try and join CTD data to trawl data using the *new* key `smhi_serial_no` that was recently added to the trawl database. Essentially all surveys (quarter 1 and 4 every year) has a different file format. 
 
+FIXME: I need to add in bottom depth again
 FIXME: having issues with the package lwgeom in renv. This doesn't knit currently.
 
 ## Load packages
