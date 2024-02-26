@@ -150,10 +150,10 @@ ordi <- ggplot(dd, aes(x = V1, y = V2, color = factor(group, levels = c("Flounde
   scale_size_continuous(range = c(0.7, 3)) +
   scale_color_manual(values = pal) +
   scale_fill_manual(values = pal) + 
-  labs(size = "Predator length", shape = "Species", color = "Group", fill = "Group",
+  labs(size = "Predator length [cm]", shape = "Species", color = "Group", fill = "Group",
        x = "Latent variable 1", y = "Latent variable 2") +
-  geom_label_repel(box.padding = 0.75, data = labs, aes(V1, V2, label = prey),
-                   color = "black", inherit.aes = FALSE, size = 2, alpha = 0.4) +
+  geom_label(box.padding = 0, data = labs, aes(V1, V2, label = prey),
+             color = "black", inherit.aes = FALSE, size = 2, alpha = 0.4) +
   theme_sleek() +
   coord_cartesian(xlim = c(-2, 2.5), ylim = c(-2.5, 2)) + 
   theme(legend.position = "bottom")

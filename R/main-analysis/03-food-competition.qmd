@@ -532,7 +532,7 @@ for(i in unique(d$group)) {
                   mesh = mesh,
                   family = tweedie(),
                   spatiotemporal = "IID", 
-                  spatial = "on",
+                  spatial = "off",
                   time = "year")
   
   sanity(m_tot)

@@ -268,7 +268,11 @@ for(i in unique(d$group)) {
                    cv = c(m_sad_0$sum_loglik, m_ben_0$sum_loglik, m_tot_0$sum_loglik,
                           m_sad_1$sum_loglik, m_ben_1$sum_loglik, m_tot_1$sum_loglik,
                           m_sad_2$sum_loglik, m_ben_2$sum_loglik, m_tot_2$sum_loglik,
-                          m_sad_3$sum_loglik, m_ben_3$sum_loglik, m_tot_3$sum_loglik))
+                          m_sad_3$sum_loglik, m_ben_3$sum_loglik, m_tot_3$sum_loglik),
+                   converged = c(m_sad_0$converged, m_ben_0$converged, m_tot_0$converged,
+                                 m_sad_1$converged, m_ben_1$converged, m_tot_1$converged,
+                                 m_sad_2$converged, m_ben_2$converged, m_tot_2$converged,
+                                 m_sad_3$converged, m_ben_3$converged, m_tot_3$converged))
   
   cv_list[[i]] <- cv
   
@@ -293,3 +297,4 @@ dcv %>%
   arrange(response) %>% 
   pivot_wider(names_from = model, values_from = delta_cv)
 ```
+
