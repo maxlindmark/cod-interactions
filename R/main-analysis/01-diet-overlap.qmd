@@ -384,7 +384,11 @@ p2 <- ggplot(ovr2, aes(mean_fle, `Flounder\nLarge cod`)) +
   stat_cor(method = "pearson", label.x = 6000, label.y = 0.97, size = 3) +
   labs(y = "Flounder:Large cod diet overlap")
 
-pp <- p1 + p2 + plot_layout(axes = "collect") & labs(x = "Mean flounder density") & theme(aspect.ratio = 1)
+pp <- p1 + p2 + plot_layout(axes = "collect") &
+  labs(x = "Mean flounder density") &
+  theme(aspect.ratio = 1, 
+        plot.margin = unit(c(1, 5, 1, 1), "mm")
+        )
 
 pp
 
