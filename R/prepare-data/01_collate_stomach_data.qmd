@@ -894,6 +894,10 @@ d3 %>%
   ungroup() %>% 
   distinct(n_sizes, year) %>% 
   as.data.frame()
+
+ggplot(d3, aes(pred_length_cm)) + 
+  geom_histogram() + 
+  facet_wrap(~year)
 ```
 
 Save and explore data in another script
