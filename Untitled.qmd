@@ -1,0 +1,19 @@
+---
+title: "Untitled"
+format: html
+editor: visual
+---
+
+
+```{r}
+library(equatiomatic)
+
+mod3 <- lm(body_mass_g ~ 0 + species, penguins)
+extract_eq(mod3)
+```
+
+
+```{r}
+mod4 <- lm(body_mass_g ~ 0 + species*bill_length_mm, penguins)
+extract_eq(mod4)
+```

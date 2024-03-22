@@ -40,6 +40,8 @@ library(brms)
 library(modelr)
 library(tidybayes)
 library(ggstats)
+library(broom)
+library(broom.mixed)
 
 # Source map-plot
 source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
@@ -585,7 +587,7 @@ ovr <- ovr %>%
   left_join(year_rect_sum_biom)
 ```
 
-Fit zero-one inflated beta regressions using brms
+Fit zero inflated beta regressions using brms
 
 ```{r}
 #https://www.andrewheiss.com/blog/2021/11/08/beta-regression-guide/#zero-inflated-beta-regression-bayesian-style
@@ -600,9 +602,9 @@ ovr <- ovr %>%
          )
 
 zib_model <- bf(
-  value ~ name*mean_biom_sc,
-  phi ~ name,
-  zi ~ name,
+  value ~ 0 + name*mean_biom_sc,
+  phi ~ 0 + name,
+  zi ~ 0 + name,
   family = zero_inflated_beta()
 )
 
@@ -615,6 +617,19 @@ fit <- brm(
 )
 
 fit
+
+zi_intercept <- tidy(fit, effects = "fixed") %>% 
+  filter(component == "zi") %>% 
+  pull(estimate) 
+
+# Transformed to a probability/proportion
+plogis(zi_intercept)*100 # percent
+
+# Compare with data
+ovr %>% 
+  count(value == 0) %>% 
+  mutate(prop = n / sum(n) *100)
+
 get_variables(fit)
 plot(fit)
 
