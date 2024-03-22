@@ -36,6 +36,10 @@ library(RCurl)
 library(devtools)
 library(ggpubr)
 library(janitor)
+library(brms)
+library(modelr)
+library(tidybayes)
+library(ggstats)
 
 # Source map-plot
 source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
@@ -53,6 +57,8 @@ source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/
 d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
 ```
 
+# Diet similarity using bar plots and ordination
+
 ## Ordination using `gllvm`
 
 ```{r}
@@ -68,8 +74,17 @@ d2 <- d2 %>%
 d3 <- d2 %>% 
   pivot_longer(ends_with("_tot")) %>% 
   mutate(value = value/pred_weight_g) %>% 
-  filter(pred_length_cm > 10 & pred_length_cm < 50) %>% # These are the sizes we work with
-  filter(value < quantile(value, probs = 0.95)) %>% 
+  filter(pred_length_cm >= 10 & pred_length_cm <= 50) %>% # These are the sizes we work with
+  #filter(value < quantile(value, probs = 0.995)) %>% 
+  # mutate(value = ifelse(value > quantile(value, probs = 0.975),
+  #                       quantile(value, probs = 0.975),
+  #                       value)) %>%
+  mutate(pred_length_cm = cut_width(pred_length_cm, 2),
+         pred_length_cm = str_remove(pred_length_cm, "[(]")) %>% 
+  separate_wider_delim(pred_length_cm, delim = ",", names = c("pred_length_cm", "scrap")) %>% 
+  mutate(pred_length_cm = ifelse(pred_length_cm == "[9", "9", pred_length_cm),
+         pred_length_cm = as.numeric(pred_length_cm)) %>% 
+  dplyr::select(-scrap) %>% 
   group_by(species, pred_length_cm, name) %>% 
   summarise(tot_prey_weight = mean(value)) %>%
   ungroup() %>% 
@@ -77,12 +92,16 @@ d3 <- d2 %>%
          name = str_replace(name, "_", " "),
          name = str_remove(name, " tot"),
          name = str_to_title(name))
-  
+
+d3 %>% filter(tot_prey_weight > 0) %>% arrange(tot_prey_weight)
+
 d_wide <- d3 %>% pivot_wider(names_from = name, values_from = tot_prey_weight)
 
 d_mat <- d_wide %>%
   dplyr::select(-species, -pred_length_cm) %>%
   as.matrix()
+
+nrow(d_mat)
 
 # Fit gllvm model with two latend variables and no covariates, meaning it becomes an ordination
 set.seed(999)
@@ -149,17 +168,18 @@ ordi <- ggplot(dd, aes(x = V1, y = V2, color = factor(group, levels = c("Flounde
   geom_point(alpha = 0.6) + 
   # stat_ellipse(aes(V1, V2, color = group), 
   #              inherit.aes = FALSE, linewidth = 1, alpha = 0.3) + 
-  scale_size_continuous(range = c(0.7, 3)) +
+  scale_radius(range = c(0.8, 4)) +
   scale_color_manual(values = pal) +
   scale_fill_manual(values = pal) + 
   labs(size = "Predator length [cm]", shape = "Species", fill = "Group", color = "",
        x = "Latent variable 1", y = "Latent variable 2") +
-  geom_label(data = labs, aes(V1, V2, label = prey),
-             color = "grey20", inherit.aes = FALSE, size = 2, alpha = 0.2) +
+  geom_label_repel(data = labs, aes(V1, V2, label = prey),
+                   color = "grey20", inherit.aes = FALSE, size = 2, alpha = 0.4,
+                   box.padding = 0.25) +
   theme_sleek() +
-  coord_cartesian(xlim = c(-2, 2.5), ylim = c(-2.5, 2)) + 
-  guides(color = guide_legend(ncol = 3),
-         size = guide_legend(ncol = 3)) + 
+  coord_cartesian(xlim = c(-3, 4), ylim = c(-3, 3)) + 
+  guides(color = guide_legend(ncol = 4),
+         size = guide_legend(ncol = 4)) + 
   theme(legend.position = "bottom",
         legend.box = "vertical",
         legend.margin = margin(-0.3, 0, 0, 0, unit = "cm"))
@@ -266,7 +286,17 @@ bar_diet <-
         legend.margin = margin(-0.3, 0, 0, 0, unit = "cm"))
 ```
 
-## Schoener's diet overlap
+## Combine plots
+
+```{r}
+#| fig-height: 8
+
+bar_diet / ordi + plot_annotation(tag_levels = "A") #+ plot_layout(heights = c(1, 1.6))
+
+ggsave(paste0(home, "/figures/ordi_diet.pdf"), width = 17, height = 21, units = "cm")
+```
+
+# Schoener's overlap index
 
 ```{r}
 # Calculate relative prey weight and average by size-class
@@ -278,9 +308,19 @@ year_rect_sum <- d2 %>%
          group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
          group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) %>% 
   group_by(year, ices_rect, group) %>%
-  summarise(tot_prey = sum(value)) 
+  summarise(n = length(unique(pred_id)),
+            tot_prey = sum(value)) %>% 
+  ungroup() %>% 
+  group_by(year, ices_rect) %>% 
+  mutate(min_stom = min(n)) %>% 
+  ungroup() %>%
+  mutate(id = paste(year, ices_rect, group, sep = "_")) %>% 
+  dplyr::select(-year, -ices_rect, -group) %>% 
+  filter(n > 3)
 
-year_rect_sum
+# year_rect_sum %>% arrange(n) %>% as.data.frame()
+# year_rect_sum %>% arrange(min_stom) %>% as.data.frame()
+# summary(year_rect_sum$n)
 
 diet_prop <- d2 %>% 
   pivot_longer(ends_with("_tot")) %>% 
@@ -291,13 +331,16 @@ diet_prop <- d2 %>%
          group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) %>% 
   group_by(year, ices_rect, group, name) %>%
   summarise(tot_prey_by_grp = sum(value)) %>% 
-  ungroup() %>% 
-  left_join(year_rect_sum, by = c("year", "ices_rect", "group")) %>% 
+  ungroup() %>%
+  mutate(id = paste(year, ices_rect, group, sep = "_")) %>% 
+  filter(id %in% unique(year_rect_sum$id)) %>% 
+  left_join(year_rect_sum, by = "id") %>% 
   mutate(prop_prey = tot_prey_by_grp / tot_prey)
   
 # Calculate overlap by year and ices rect and species group. Make the proportions wide!
+#unique(diet_prop$group)
 diet_prop_wide <- diet_prop %>% 
-  dplyr::select(-tot_prey_by_grp, -tot_prey) %>% 
+  dplyr::select(-tot_prey_by_grp, -tot_prey, -id, -n) %>% 
   pivot_wider(names_from = group, values_from = prop_prey) %>% 
   mutate(abs_f_sc = abs(Flounder - `Small cod`),
          abs_f_lc = abs(Flounder - `Large cod`),
@@ -316,6 +359,8 @@ ovr <- diet_prop_wide %>%
   pivot_longer(c(`Flounder\nSmall cod`, `Flounder\nLarge cod`, `Small cod\nLarge cod`),
                names_to = "overlap_group", values_to = "overlap") %>% 
   drop_na(overlap)
+
+ovr
 
 # Plot diet overlap
 # plot_map +
@@ -341,20 +386,17 @@ ps <- ggplot(ovr, aes(overlap_group, overlap, color = ices_rect)) +
         legend.text = element_text(size = 7),
         legend.title = element_text(size = 8),
         legend.margin = margin(-0.3, 0, 0, 0, unit = "cm"))
-```
 
-## Combine plots
+ps
 
-```{r}
-#| fig-height: 8
-
-bar_diet / (ordi + ps) + plot_annotation(tag_levels = "A") #+ plot_layout(heights = c(1, 1.6))
-
-ggsave(paste0(home, "/figures/ordi_diet_ovr.pdf"), width = 18, height = 21, units = "cm")
+# summary(ovr$overlap)
+# 
+ovr %>% filter(overlap == 0)
 ```
 
 ## How does the diet overlap relate to biomass density of the species?
 Trawl data
+
 ```{r}
 ## Read in trawl data. There's one file for cod and one for flounder
 # They go up to 2020 Q1
@@ -537,32 +579,161 @@ year_rect_sum_biom <- bio_data %>%
             mean_mcod = mean(mcod_kg_km2)) 
 
 # Join into diet data
-ovr2 <- ovr %>% 
+ovr <- ovr %>% 
   pivot_wider(names_from = overlap_group, values_from = overlap) %>% 
   drop_na() %>% 
   left_join(year_rect_sum_biom)
+```
 
-p1 <- ggplot(ovr2, aes(mean_fle, `Flounder\nSmall cod`)) + 
-  geom_point() + 
-  coord_cartesian(ylim = c(0, 1)) +
-  stat_cor(method = "pearson", label.x = 5700, label.y = 0.97, size = 3) +
-  labs(y = "Flounder:Small cod diet overlap")
+Fit zero-one inflated beta regressions using brms
 
-p2 <- ggplot(ovr2, aes(mean_fle, `Flounder\nLarge cod`)) + 
-  geom_point() + 
-  coord_cartesian(ylim = c(0, 1)) +
-  stat_cor(method = "pearson", label.x = 5000, label.y = 0.97, size = 3) +
-  labs(y = "Flounder:Large cod diet overlap")
+```{r}
+#https://www.andrewheiss.com/blog/2021/11/08/beta-regression-guide/#zero-inflated-beta-regression-bayesian-style
+  
+# full model
+ovr <- ovr %>%
+  ungroup() %>% 
+  clean_names() %>% 
+  pivot_longer(c("flounder_small_cod", "flounder_large_cod", "small_cod_large_cod")) %>% 
+  mutate(value = ifelse(value < 1e-15, 0, value),
+         mean_biom_sc = as.numeric(scale(mean_fle + mean_scod + mean_mcod) / 3)#,
+         )
 
-pp <- p1 + p2 + plot_layout(axes = "collect") &
-  labs(x = "Mean flounder density") &
-  theme(aspect.ratio = 1, 
-        plot.margin = unit(c(1, 5, 1, 1), "mm")
-        )
+zib_model <- bf(
+  value ~ name*mean_biom_sc,
+  phi ~ name,
+  zi ~ name,
+  family = zero_inflated_beta()
+)
 
-pp
+fit <- brm(
+  formula = zib_model,
+  data = ovr,
+  cores = 4,
+  chains = 4,
+  iter = 4000
+)
 
-ggsave(paste0(home, "/figures/schoener_pearson.pdf"), width = 17, height = 8, units = "cm")
+fit
+get_variables(fit)
+plot(fit)
+
+# https://discourse.mc-stan.org/t/trying-to-understand-default-prior-for-the-hurdle-part/24337
+priors <- prior_summary(fit)
+priors
+stancode(fit)
+
+pp_check(fit) +
+  coord_cartesian(expand = TRUE) +
+  labs(x = "Schoener's overlap index",
+       y = "Density") + 
+  theme(legend.position.inside = c(0.8, 0.8)) + 
+  guides(color = guide_legend(position = "inside"))
+  
+ggsave(paste0(home, "/figures/supp/schoener_zib_pp_check.pdf"), width = 11, height = 11, units = "cm")
+
+conditional_effects(fit)
+
+set.seed(123)
+
+ovr <- ovr %>% 
+  mutate(name2 = ifelse(name == "flounder_large_cod", "Flounder\nLarge cod", name),
+         name2 = ifelse(name == "flounder_small_cod", "Flounder\nSmall cod", name2),
+         name2 = ifelse(name == "small_cod_large_cod", "Small cod\nLarge cod", name2))
+
+p1 <- ovr %>%
+  data_grid(name = unique(name),
+            mean_biom_sc = 0) %>%
+  mutate(name2 = ifelse(name == "flounder_large_cod", "Flounder\nLarge cod", name),
+         name2 = ifelse(name == "flounder_small_cod", "Flounder\nSmall cod", name2),
+         name2 = ifelse(name == "small_cod_large_cod", "Small cod\nLarge cod", name2)) %>% 
+  add_epred_draws(fit) %>%
+  ggplot(aes(.epred, name2)) +
+  stat_pointinterval(.width = c(.66, .95)) + 
+  geom_vline(xintercept = 0.6, linetype = 2, alpha = 0.6) +
+  geom_jitter(data = ovr, aes(value, name2), height = 0.2, width = 0, alpha = 0.3, color = "grey50") +
+  labs(y = "Schoener's overlap index", x = "") +
+  geom_stripped_rows() +
+  coord_cartesian(expand = 0, xlim = c(-0.03, 1)) +
+  theme(plot.margin = unit(c(0, 0.3, 0, 0), "cm")) +
+  NULL
+
+pal <- brewer.pal(name = "RdBu", n = 7)
+
+# Check CI's
+fit %>%
+  spread_draws(b_mean_biom_sc,
+               `b_nameflounder_small_cod:mean_biom_sc`,
+               `b_namesmall_cod_large_cod:mean_biom_sc`) %>%
+  mutate("Flounder\nLarge cod" = b_mean_biom_sc,
+         "Flounder\nSmall cod" = b_mean_biom_sc + `b_nameflounder_small_cod:mean_biom_sc`,
+         "Small cod\nLarge cod" = b_mean_biom_sc + `b_namesmall_cod_large_cod:mean_biom_sc`,
+         ) %>% 
+  summarise(mean = mean(`Small cod\nLarge cod`),
+            upr = quantile(`Small cod\nLarge cod`, probs = 0.845))
+
+p2 <- fit %>%
+  spread_draws(b_mean_biom_sc,
+               `b_nameflounder_small_cod:mean_biom_sc`,
+               `b_namesmall_cod_large_cod:mean_biom_sc`) %>%
+  mutate("Flounder\nLarge cod" = b_mean_biom_sc,
+         "Flounder\nSmall cod" = b_mean_biom_sc + `b_nameflounder_small_cod:mean_biom_sc`,
+         "Small cod\nLarge cod" = b_mean_biom_sc + `b_namesmall_cod_large_cod:mean_biom_sc`,
+         ) %>%
+  pivot_longer(c(`Flounder\nLarge cod`, `Flounder\nSmall cod`, `Small cod\nLarge cod`),
+               names_to = "Overlap group", values_to = "slope") %>% 
+  ggplot(aes(slope, `Overlap group`, fill = after_stat(x < 0))) +
+  ggdist::stat_eye() +
+  labs(x = "", y = "Slope of biomass density\non the mean Schoener's diet overlap") +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.6) +
+  scale_fill_manual(values = c("gray80", alpha(pal[6], 0.8))) + 
+  theme(legend.position.inside = c(0.15, 0.1)) + 
+  guides(fill = guide_legend(position = "inside")) +
+  geom_stripped_rows() +
+  coord_cartesian(expand = 0) +
+  NULL
+
+p2
+
+# Conditional
+p3 <- ovr %>%
+  data_grid(name = unique(name),
+            mean_biom_sc = seq_range(mean_biom_sc, n = 101)) %>%
+  mutate(name2 = ifelse(name == "flounder_large_cod", "Flounder\nLarge cod", name),
+         name2 = ifelse(name == "flounder_small_cod", "Flounder\nSmall cod", name2),
+         name2 = ifelse(name == "small_cod_large_cod", "Small cod\nLarge cod", name2)) %>% 
+  add_epred_draws(fit) %>%
+  ggplot(aes(x = mean_biom_sc, y = value, fill = name2, color = name2)) +
+  stat_lineribbon(aes(y = .epred), .width = c(.95), alpha = 1/4) +
+  geom_point(data = ovr, alpha = 0.5) +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_color_brewer(palette = "Set1") + 
+  theme(legend.position.inside = c(0.90, 0.84)) + 
+  labs(y = "Schoener's overlap index", x = "Scaled cod and flounder mean biomass density",
+       fill = "", color = "") + 
+  guides(fill = guide_legend(position = "inside"))
+
+pp <- (p1 + p2) + plot_layout(axes = "collect")
+
+pp / p3 +
+  plot_annotation(tag_levels = "A")
+
+ggsave(paste0(home, "/figures/schoener_zib.pdf"), width = 17, height = 20, units = "cm")
+
+# What's the actual predictions
+sum <- ovr %>%
+  data_grid(name = unique(name),
+            mean_biom_sc = 0) %>%
+  mutate(name2 = ifelse(name == "flounder_large_cod", "Flounder\nLarge cod", name),
+         name2 = ifelse(name == "flounder_small_cod", "Flounder\nSmall cod", name2),
+         name2 = ifelse(name == "small_cod_large_cod", "Small cod\nLarge cod", name2)) %>% 
+  add_epred_draws(fit) %>% 
+  group_by(name) %>% 
+  summarise(mean = mean(.epred))
+
+sum
+
+p1 + geom_vline(data = sum, aes(xintercept = mean))
 ```
 
 ```{r}

@@ -357,16 +357,17 @@ plot_map +
   theme_sleek(base_size = 8)
 
 # Check bottom depth
-hist(trawl_data$bottom_depth)
-
-trawl_data %>% 
+p1 <- ggplot(trawl_data, aes(bottom_depth)) + 
+  geom_histogram()
+  
+p2 <- trawl_data %>% 
   mutate(depth2 = ifelse(bottom_depth > 250, "deeper than 250 m", "normal")) %>% 
   ggplot(aes(lon, lat, color = as.factor(year), shape = as.factor(quarter))) +
   geom_point() + 
   facet_wrap(~ depth2, ncol = 1) + 
   coord_sf()
 
-trawl_data %>% 
+p3 <- trawl_data %>% 
   mutate(haul_id = paste(year, quarter, haul)) %>% 
   distinct(haul_id, .keep_all = TRUE) %>% 
   mutate(depth2 = ifelse(bottom_depth > 250, "deeper than 250 m", "normal")) %>% 
@@ -375,6 +376,8 @@ trawl_data %>%
   ggplot(aes(year, n, fill = depth2)) + 
   geom_bar(stat = "identity")
 
+library(patchwork)
+(p1 + p3) / p2
 # This is strange. I will get back to this in later scripts and likely use modelled depths in the analysys
 ```
 

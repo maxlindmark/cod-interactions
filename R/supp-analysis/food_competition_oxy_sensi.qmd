@@ -25,7 +25,7 @@ execute:
 
 # Load libraries, install if needed
 pkgs <- c("tidyverse", "tidylog", "RCurl", "sdmTMB", "RColorBrewer", "RCurl", "devtools",
-          "patchwork")
+          "patchwork", "ggstats")
 
 if(length(setdiff(pkgs, rownames(installed.packages()))) > 0){
 
@@ -281,7 +281,7 @@ coef_df <- bind_rows(bind_rows(coef_sad) %>% mutate(model = "Saduria", oxy_sourc
 
 pal <- (brewer.pal(n = 11, name = "RdYlBu")[c(11, 4, 1)])
 
-coef_df %>%
+coef_df2 <- coef_df %>%
   filter(!grepl('year', term)) %>%
   filter(!grepl('quarter', term)) %>%
   mutate(term = str_remove_all(term, "_sc"),
@@ -297,22 +297,62 @@ coef_df %>%
          term = ifelse(term == " Saduria×flounder ", "Saduria × flounder", term),
          term = ifelse(term == "Small cod ×oxygen", "Small cod × oxygen", term)) %>% 
   mutate(oxy_source = ifelse(oxy_source == "model", "Model", "CTD")) %>% 
-  ggplot(aes(term, estimate, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")),
-             alpha = sig, shape = oxy_source)) +
-  facet_wrap(~ model, ncol = 1) + 
-  geom_hline(yintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+  mutate(model2 = ifelse(model == "Saduria", "Prey=Saduria", NA),
+         model2 = ifelse(model == "Benthos", "Prey=Benthic prey", model2),
+         model2 = ifelse(model == "Total", "Prey=Total prey", model2)) %>% 
+  mutate(sig2 = ifelse(sig == "Y", "N", "Y"))
+
+coef_df2 <- coef_df2 %>% 
+  mutate(term = ifelse(term == "Oxygen",
+                       paste0("<span style=\"color: ", "tomato3", "\">", term, "</span>"),
+                       term))
+p1 <- 
+  coef_df2 %>% 
+  filter(model == "Saduria") %>% 
+  ggplot(aes(estimate, term, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")),
+             alpha = sig2, shape = oxy_source)) +
+  geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
+  facet_wrap(~factor(model2, levels = c("Prey=Saduria", "Prey=Benthic prey")), ncol = 1) + 
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
   geom_point(position = position_dodge(width = 0.5), size = 2) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0,
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
                 position = position_dodge(width = 0.5)) +
-  scale_alpha_manual(values = c(0.4, 1)) +
+  scale_alpha_manual(values = c(1, 0.4)) +
   scale_color_manual(values = pal) +
-  labs(x = "", y = "Standardized coefficient", alpha = "95% CI crossing 0", color = "Group", shape = "Oxygen source") +
+  labs(x = "", y = "", alpha = "95% CI crossing 0", color = "Group", shape = "Oxygen source") +
   theme(legend.position = "bottom", 
-        legend.direction = "vertical") +
+        legend.direction = "vertical",
+        axis.text.y = ggtext::element_markdown()) +
   guides(color = guide_legend(title.position = "top", title.hjust = 0.5),
          alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
-  coord_flip() +
   NULL
 
-ggsave(paste0(home, "/figures/supp/coefs_oxy_sens.pdf"), width = 14, height = 25, units = "cm")
+p2 <- 
+  coef_df2 %>% 
+  filter(model == "Benthos") %>% 
+  ggplot(aes(estimate, term, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")),
+             alpha = sig2, shape = oxy_source)) +
+  geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
+  facet_wrap(~factor(model2, levels = c("Prey=Saduria", "Prey=Benthic prey")), ncol = 1) + 
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+  geom_point(position = position_dodge(width = 0.5), size = 2) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
+                position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c(1, 0.4)) +
+  scale_color_manual(values = pal) +
+  labs(x = "", y = "", alpha = "95% CI crossing 0", color = "Group", shape = "Oxygen source") +
+  theme(legend.position = "bottom", 
+        legend.direction = "vertical",
+        axis.text.y = ggtext::element_markdown()) +
+  guides(color = guide_legend(title.position = "top", title.hjust = 0.5),
+         alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
+  NULL
+
+p1 / p2 +
+  plot_annotation(tag_levels = "A") +
+  plot_layout(axes = "collect", guides = "collect") & 
+  theme(legend.position = "bottom") 
+
+ggsave(paste0(home, "/figures/supp/coefs_oxy_sens.pdf"), width = 13, height = 22, units = "cm")
+
 ```

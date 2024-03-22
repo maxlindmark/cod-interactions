@@ -79,6 +79,22 @@ d <- d %>%
 
 ## Quick explore
 
+Correlation between variables
+
+```{r}
+# Plot correlation between variables
+d_cor <- d %>%
+  dplyr::select("oxygen_sc", "density_saduria_sc", "flounder_density_sc",
+                "large_cod_density_sc", "small_cod_density_sc", "depth_sc")
+
+corr <- round(cor(d_cor), 1)
+
+library(ggcorrplot)
+ggcorrplot(corr, hc.order = TRUE, type = "lower", lab = TRUE, lab_size = 2.5) +
+  theme_classic() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3))
+```
+
 Sample size 
 
 ```{r samples size}
@@ -457,6 +473,7 @@ for(i in unique(d$group)) {
   # Conditional effects: flounder
   nd_flounder <- data.frame(expand_grid(
     density_saduria_sc = c(quantile(d$density_saduria_sc, probs = 0.05),
+                           mean(d$density_saduria_sc),
                            quantile(d$density_saduria_sc, probs = 0.95)),
     flounder_density_sc = seq(quantile(dd$flounder_density_sc, probs = 0.05),
                               quantile(dd$flounder_density_sc, probs = 0.95),
@@ -466,8 +483,7 @@ for(i in unique(d$group)) {
            fquarter = as.factor(1),
            oxygen_sc = 0,
            depth_sc = 0,
-           small_cod_density_sc = 0,
-           fhaul_id = as.factor("2020_1_81")) # TODO: why do I need this when I specify re_form_iid!?
+           small_cod_density_sc = 0)
 
   preds_flounder_sad <- predict(m_sad, newdata = nd_flounder, re_form = NA, re_form_iid = NA, se_fit = TRUE)
   preds_flounder_ben <- predict(m_ben, newdata = nd_flounder, re_form = NA, re_form_iid = NA, se_fit = TRUE)
@@ -487,8 +503,7 @@ for(i in unique(d$group)) {
            fquarter = as.factor(1),
            oxygen_sc = 0,
            depth_sc = 0,
-           flounder_density_sc = 0,
-           fhaul_id = as.factor("2020_1_81")) # TODO: why do I need this when I specify re_form_iid!?
+           flounder_density_sc = 0) # TODO: why do I need this when I specify re_form_iid!?
 
   preds_cod_sad <- predict(m_sad, newdata = nd_cod, re_form = NA, re_form_iid = NA, se_fit = TRUE)
   preds_cod_ben <- predict(m_ben, newdata = nd_cod, re_form = NA, re_form_iid = NA, se_fit = TRUE)
@@ -563,6 +578,21 @@ for(i in unique(d$group)) {
   
   coefs_tot <- coefs_tot %>% mutate(group = "large cod")
   
+  # Conditional effects: flounder
+  nd_flounder <- data.frame(expand_grid(
+    flounder_density_sc = seq(quantile(dd$flounder_density_sc, probs = 0.05),
+                              quantile(dd$flounder_density_sc, probs = 0.95),
+                              length.out = 50))) %>%
+    mutate(year = 2020,
+           fyear = as.factor(2020),
+           fquarter = as.factor(1),
+           oxygen_sc = 0,
+           depth_sc = 0,
+           large_cod_density_sc = 0)
+
+  preds_flounder_tot <- predict(m_tot, newdata = nd_flounder, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+  pred_flounder_tot <- preds_flounder_tot %>% mutate(group = "large cod", xvar = "flounder")
+
 ```
 
 ## Make dataframes
@@ -572,7 +602,6 @@ coef_df <- bind_rows(bind_rows(coef_sad) %>% mutate(model = "Saduria"),
                      bind_rows(coef_ben) %>% mutate(model = "Benthos"))
 
 coef_df <- coef_df %>% bind_rows(coefs_tot %>% mutate(model = "Total"))
-
 
 pred_cod_df <- bind_rows(bind_rows(pred_cod_sad) %>% mutate(model = "Saduria"),
                          bind_rows(pred_cod_ben) %>% mutate(model = "Benthos"))
@@ -732,12 +761,14 @@ pal <- (brewer.pal(n = 11, name = "RdYlBu")[c(11, 4, 1)])
 
 range_df %>% 
   mutate(group = str_to_sentence(group),
-         model = str_to_sentence(model)) %>% 
-  ggplot(aes(model, estimate, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) + 
+         model2 = ifelse(model == "benthos", "Benthic prey", model),
+         model2 = ifelse(model == "saduria", "Saduria", model2),
+         model2 = ifelse(model == "total", "Total prey", model2)) %>% 
+  ggplot(aes(model2, estimate, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) + 
   geom_point(size = 2) +
   geom_hline(yintercept = 10, linetype = 2, alpha = 0.5) +
   scale_color_manual(values = pal) + 
-  labs(x = "Prey group", y = "Range (km)", color = "Group") + 
+  labs(x = "", y = "Range (km)", color = "Predator") + 
   theme(aspect.ratio = 1,
         legend.position = c(0.86, 0.86)) 
 
@@ -748,8 +779,8 @@ ggsave(paste0(home, "/figures/supp/ranges.pdf"), width = 11, height = 11, units 
 
 ```{r plot residuals}
 # Plot residuals
-res_df |> 
-  mutate(group = str_to_title(group)) |> 
+res_df %>% 
+  mutate(group = str_to_title(group)) %>% 
   ggplot(aes(sample = res)) +
   stat_qq(size = 0.75, shape = 21, fill = NA) +
   facet_grid(model ~ group) +
@@ -776,20 +807,26 @@ coef_df2 <- coef_df %>%
          term = str_replace_all(term, "llco", "ll co"),
          term = str_replace(term, ":", " × "),
          term = str_to_sentence(term),
-         group = str_to_sentence(group))
+         group = str_to_sentence(group)) %>% 
+  mutate(model2 = ifelse(model == "Saduria", "Prey=Saduria", NA),
+         model2 = ifelse(model == "Benthos", "Prey=Benthic prey", model2),
+         model2 = ifelse(model == "Total", "Prey=Total prey", model2)) %>% 
+  mutate(sig2 = ifelse(sig == "Y", "N", "Y"))
 
-
-ggplot(coef_df2, aes(estimate, term, alpha = sig,
-                     color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
+p1 <- 
+  coef_df2 %>% 
+  filter(model == "Benthos") %>% 
+  ggplot(aes(estimate, term, alpha = sig2,
+                 color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
   geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
-  facet_wrap2(~model, ncol = 2, scales = "free") +
+  facet_wrap2(~model2, ncol = 2, scales = "free") +
   geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
   geom_point(position = position_dodge(width = 0.5), size = 1.5) +
   geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
                 position = position_dodge(width = 0.5)) +
-  scale_alpha_manual(values = c(0.4, 1)) +
+  scale_alpha_manual(values = c(1, 0.4)) +
   scale_color_manual(values = pal) +
-  labs(x = "", y = "Standardized coefficient", alpha = "95% CI crossing 0", color = "Group") +
+  labs(x = "", y = "", alpha = "95% CI crossing 0", color = "Predator") +
   guides(color = guide_legend(title.position = "top", title.hjust = 0.5),
          alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
   theme(legend.position = c(0.75, 0.2),
@@ -798,7 +835,46 @@ ggplot(coef_df2, aes(estimate, term, alpha = sig,
         legend.margin = margin(0, 0, 0, 0)) +
   NULL
 
-ggsave(paste0(home, "/figures/coefs.pdf"), width = 17, height = 13, units = "cm")
+p2 <- 
+  coef_df2 %>% 
+  filter(model == "Saduria") %>% 
+  ggplot(aes(estimate, term, alpha = sig2,
+                 color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
+  geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
+  facet_wrap2(~model2, ncol = 2, scales = "free") +
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+  geom_point(position = position_dodge(width = 0.5), size = 1.5) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
+                position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c(1, 0.4)) +
+  scale_color_manual(values = pal) +
+  labs(x = "", y = "") +
+  guides(color = "none",
+         alpha = "none")
+
+p3 <- 
+  coef_df2 %>% 
+  filter(model == "Total") %>% 
+  ggplot(aes(estimate, term, alpha = sig2,
+                 color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
+  geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
+  facet_wrap2(~model2, ncol = 2, scales = "free") +
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+  geom_point(position = position_dodge(width = 0.5), size = 1.5) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
+                position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c(1, 0.4)) +
+  scale_color_manual(values = pal) +
+  labs(x = "", y = "") +
+  guides(color = "none",
+         alpha = "none")
+
+p2 / p1 / p3 +
+  plot_annotation(tag_levels = "A") +
+  plot_layout(axes = "collect", guides = "collect") & 
+  theme(legend.position = "bottom") 
+
+ggsave(paste0(home, "/figures/coefs.pdf"), width = 11, height = 22, units = "cm")
 ```
 
 ## Plot year and quarter coefficients
@@ -811,11 +887,14 @@ coef_df3 <- coef_df %>%
   filter(grepl('year', term)) %>%
   mutate(term = str_remove_all(term, "fyear"),
          group = str_to_sentence(group),
-         term = as.numeric(term))
+         term = as.numeric(term),
+         model2 = ifelse(model == "Benthos", "Benthic prey", model),
+         model2 = ifelse(model == "Saduria", "Saduria", model2),
+         model2 = ifelse(model == "Total", "Total prey", model2))
 
 ggplot(coef_df3, aes(term, estimate, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")), 
                      fill = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
-  facet_wrap(~model, scales = "free", ncol = 1) +
+  facet_wrap(~model2, scales = "free", ncol = 1) +
   geom_line(position = position_dodge(width = 0.5)) +
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2, color = NA) +
   scale_color_manual(values = pal) +
@@ -837,24 +916,31 @@ ggsave(paste0(home, "/figures/supp/coefs_year.pdf"), width = 11, height = 21, un
 # Now do quarter
 coef_df5 <- coef_df %>%
   filter(term %in% c("fquarter4")) %>% 
-  mutate(group = str_to_sentence(group))
+  mutate(group = str_to_sentence(group),
+         model2 = ifelse(model == "Benthos", "Benthic prey", model),
+         model2 = ifelse(model == "Saduria", "Saduria", model2),
+         model2 = ifelse(model == "Total", "Total prey", model2)) %>% 
+  mutate(sig2 = ifelse(sig == "Y", "N", "Y"))
 
-ggplot(coef_df5, aes(estimate, model, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")),
-                     alpha = sig)) +
+ggplot(coef_df5, aes(estimate, model2,
+                     alpha = sig2,
+                     color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
   geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
   geom_point(position = position_dodge(width = 0.5), size = 1.5) +
   geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
                 position = position_dodge(width = 0.5)) +
-  scale_alpha_manual(values = c(0.4, 1)) +
+  scale_alpha_manual(values = c(1, 0.4)) +
   scale_color_manual(values = pal) +
-  labs(x = "", y = "Quarter 4 effect", alpha = "95% CI crossing 0", color = "Group") +
+  labs(x = "", y = "Quarter 4 effect", alpha = "95% CI crossing 0", color = "Predator") +
   guides(color = guide_legend(title.position = "top", title.hjust = 0.5),
          alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
+  geom_stripped_rows(aes(y = model2), inherit.aes = FALSE) +
   theme(legend.position = "bottom",
         legend.direction = "horizontal",
         legend.box = "horizontal",
         legend.box.spacing = unit(-3, "pt"),
-        legend.margin = margin(0, 0, 0, 0))
+        legend.margin = margin(0, 0, 0, 0)) + 
+  coord_cartesian(expand = 0)
 
 ggsave(paste0(home, "/figures/supp/coefs_quarter.pdf"), width = 17, height = 11, units = "cm")
 ```
@@ -866,75 +952,112 @@ ggsave(paste0(home, "/figures/supp/coefs_quarter.pdf"), width = 17, height = 11,
 # https://www.calculator.net/confidence-interval-calculator.html
 pred_df <- bind_rows(pred_cod_df, pred_flounder_df) %>%
   mutate(group = str_to_sentence(group),
-         sad = ifelse(density_saduria_sc == min(density_saduria_sc), "Low", "High"))
+         sad = ifelse(density_saduria_sc == min(density_saduria_sc), "Low", NA),
+         sad = ifelse(density_saduria_sc == max(density_saduria_sc), "High", sad)) %>% 
+  drop_na(sad)
+
+pred_df2 <- bind_rows(pred_flounder_df,
+                      pred_flounder_tot %>% mutate(model = "Total")) %>% 
+  mutate(group = str_to_sentence(group),
+         density_saduria_sc = replace_na(density_saduria_sc,
+                                         median(density_saduria_sc, na.rm = TRUE)))
 
 # 75% CI!!
 
 # x small cod for different saduria (y = small cod)
 # x flounder cod for different saduria (y = all)
 
-ggplot(pred_df %>% filter(model == "Saduria" & xvar == "cod" & group == "Small cod"),
-       aes(small_cod_density_sc, exp(est), color = sad, fill = sad)) +
-  geom_ribbon(aes(ymin = exp(est - 1.036*est_se), ymax = exp(est + 1.036*est_se)),
-             alpha = 0.3, color = NA) +
-  geom_line() +
-  #coord_cartesian(ylim = c(0, 0.0001)) +
-  facet_wrap(~group, scales = "free") +
-  scale_color_brewer(palette = "Dark2") +
-  scale_fill_brewer(palette = "Dark2") +
-  labs(x = "Small cod density", y = "Relative saduria weight",
-       color = "Saduria", fill = "Saduria") +
-  theme(legend.position = c(0.88, 0.88))
+# ggplot(pred_df %>% filter(model == "Saduria" & xvar == "cod" & group == "Small cod"),
+#        aes(small_cod_density_sc, exp(est), color = sad, fill = sad)) +
+#   geom_ribbon(aes(ymin = exp(est - 1.036*est_se), ymax = exp(est + 1.036*est_se)),
+#              alpha = 0.3, color = NA) +
+#   geom_line() +
+#   #coord_cartesian(ylim = c(0, 0.0001)) +
+#   facet_wrap(~group, scales = "free") +
+#   scale_color_brewer(palette = "Dark2") +
+#   scale_fill_brewer(palette = "Dark2") +
+#   labs(x = "Small cod density", y = "Relative saduria weight",
+#        color = "Saduria", fill = "Saduria") +
+#   theme(legend.position = c(0.88, 0.88))
 
 #ggsave(paste0(home, "/figures/conditional_saduria_scod.pdf"), width = 11, height = 11, units = "cm")
 
-ggplot(pred_df %>% filter(model == "Saduria" & xvar == "flounder" & !group == "Large cod"),
+ggplot(pred_df %>% filter(model == "Saduria" & xvar == "flounder"),# & !group == "Large cod"),
        aes(flounder_density_sc, exp(est), color = sad, fill = sad)) +
   geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
               alpha = 0.3, color = NA) +
   geom_line() +
-  facet_wrap(~group, scales = "free", ncol = 2) +
+  facet_wrap(~factor(group, levels = c("Flounder", "Small cod", "Large cod")),
+             scales = "free", 
+             ncol = 3) +
   scale_color_brewer(palette = "Dark2") +
   scale_fill_brewer(palette = "Dark2") +
-  coord_cartesian(xlim = c(-0.5, 0.5)) +
+  coord_cartesian(#xlim = c(-0.5, 0.5), 
+                  expand = 0) +
   labs(x = "Flounder density", y = "Relative saduria weight",
        color = "Saduria", fill = "Saduria") + 
-  theme(legend.position = c(0.95, 0.88),
+  theme(legend.position = c(0.95, 0.84),
         strip.text.x.top = element_text(angle = 0, hjust = 0))
 
-ggsave(paste0(home, "/figures/conditional_saduria_flounder.pdf"), width = 17, height = 9, units = "cm")
+ggsave(paste0(home, "/figures/conditional_saduria_flounder.pdf"), width = 19, height = 7, units = "cm")
+
+# summary(pred_df2)
+# unique(pred_df2$density_saduria_sc)
+# 
+# pred_df2 %>%
+#   filter(xvar == "flounder") %>% 
+#     filter(group == "Large cod") %>%
+#     filter(!model == "Saduria") %>% 
+#   filter(!density_saduria_sc %in% c(min(density_saduria_sc), max(density_saduria_sc))) %>% 
+#   ggplot(aes(flounder_density_sc, exp(est), color = model, fill = model)) +
+#   geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
+#               alpha = 0.3, color = NA) +
+#   geom_line() +
+#   facet_wrap(~factor(model),
+#              #scales = "free",
+#              ncol = 2) +
+#   # facet_wrap(~factor(group, levels = c("Flounder", "Small cod", "Large cod")),
+#   #            scales = "free",
+#   #            ncol = 3) +
+#   #scale_color_brewer(palette = "Dark2") +
+#   #scale_fill_brewer(palette = "Dark2") +
+#   coord_cartesian(#xlim = c(-0.5, 0.5), 
+#                   expand = 0) +
+#   labs(x = "Flounder density", y = "Relative prey weight",
+#        color = "Model", fill = "Model") + 
+#   theme(legend.position = c(0.95, 0.84),
+#         strip.text.x.top = element_text(angle = 0, hjust = 0))
 
 # Conditional effects of oxygen and flounder for the benthos model
-
-  nd_flounder_oxy <- data.frame(expand_grid(
-    oxygen_sc = c(quantile(d$oxygen_sc, probs = 0.05),
-                  quantile(d$oxygen_sc, probs = 0.95)),
-    flounder_density_sc = seq(quantile(dd$flounder_density_sc, probs = 0.05),
-                              quantile(dd$flounder_density_sc, probs = 0.95),
-                              length.out = 50))) %>%
-    mutate(year = 2020,
-           fyear = as.factor(2020),
-           fquarter = as.factor(1),
-           density_saduria_sc = 0, 
-           depth_sc = 0,
-           small_cod_density_sc = 0,
-           fhaul_id = as.factor("2020_1_81")) # TODO: why do I need this when I specify re_form_iid!?
-
-  preds_flounder_oxy_ben <- predict(m_ben, newdata = nd_flounder_oxy, re_form = NA, re_form_iid = NA, se_fit = TRUE)
-
-  
-  ggplot(preds_flounder_oxy_ben, aes(flounder_density_sc, exp(est), color = factor(round(oxygen_sc)), fill = factor(round(oxygen_sc)))) +
-    geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
-                alpha = 0.3, color = NA) +
-    geom_line() +
-    #facet_wrap(~group, scales = "free", ncol = 2) +
-    scale_color_brewer(palette = "Dark2") +
-    scale_fill_brewer(palette = "Dark2") +
-    coord_cartesian(xlim = c(-0.5, 0.5)) +
-    labs(x = "Flounder density", y = "Relative saduria weight",
-         color = "Oxygen", fill = "Oxygen") + 
-    theme(legend.position = c(0.95, 0.88),
-          strip.text.x.top = element_text(angle = 0, hjust = 0))
+# 
+#   nd_flounder_oxy <- data.frame(expand_grid(
+#     oxygen_sc = c(quantile(d$oxygen_sc, probs = 0.05),
+#                   quantile(d$oxygen_sc, probs = 0.95)),
+#     flounder_density_sc = seq(quantile(dd$flounder_density_sc, probs = 0.05),
+#                               quantile(dd$flounder_density_sc, probs = 0.95),
+#                               length.out = 50))) %>%
+#     mutate(year = 2020,
+#            fyear = as.factor(2020),
+#            fquarter = as.factor(1),
+#            density_saduria_sc = 0, 
+#            depth_sc = 0,
+#            small_cod_density_sc = 0) # TODO: why do I need this when I specify re_form_iid!?
+# 
+#   preds_flounder_oxy_ben <- predict(m_ben, newdata = nd_flounder_oxy, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+# 
+#   
+#   ggplot(preds_flounder_oxy_ben, aes(flounder_density_sc, exp(est), color = factor(round(oxygen_sc)), fill = factor(round(oxygen_sc)))) +
+#     geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
+#                 alpha = 0.3, color = NA) +
+#     geom_line() +
+#     #facet_wrap(~group, scales = "free", ncol = 2) +
+#     scale_color_brewer(palette = "Dark2") +
+#     scale_fill_brewer(palette = "Dark2") +
+#     coord_cartesian(xlim = c(-0.5, 0.5)) +
+#     labs(x = "Flounder density", y = "Relative saduria weight",
+#          color = "Oxygen", fill = "Oxygen") + 
+#     theme(legend.position = c(0.95, 0.88),
+#           strip.text.x.top = element_text(angle = 0, hjust = 0))
 ```
 
 Showing conditional effects of oxygen on small cod feeding on benthos
@@ -967,8 +1090,7 @@ Showing conditional effects of oxygen on small cod feeding on benthos
            density_saduria_sc = 0,
            flounder_density_sc = 0, 
            depth_sc = 0,
-           small_cod_density_sc = 0,
-           fhaul_id = as.factor("2020_1_81")) %>% 
+           small_cod_density_sc = 0) %>% 
     mutate(oxygen_sc = (oxygen - mean(d$oxygen)) / sd(d$oxygen)) 
   
   

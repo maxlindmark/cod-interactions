@@ -59,7 +59,8 @@ pal <- brewer.pal(name = "RdBu", n = length(unique(d2$year)))
 
 plot_map +
   geom_sf(color = "gray80") + 
-  geom_point(data = d2, aes(X*1000, Y*1000, color = as.factor(year), fill = as.factor(year),
+  geom_point(data = d2, aes(X*1000, Y*1000, color = as.factor(year),
+                            fill = as.factor(year),
                             size = n)) + 
   scale_color_manual(values = alpha(pal, alpha = 0.5)) +
   scale_radius(range = c(0.5, 2.5)) +

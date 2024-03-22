@@ -171,7 +171,7 @@ ggplot(dat, aes(lon, lat, color = depth*-1)) +
 
 dat$depth <- dat$depth*-1
 
-dat <- dat |> drop_na(depth)
+dat <- dat %>% drop_na(depth)
 
 plot_map + 
   geom_point(data = dat, aes(X*1000, Y*1000, color = depth)) + 
@@ -208,6 +208,32 @@ saduria <- terra::rast(paste0(home, "/data/saduria-tif/FWBiomassm_raster_1981201
 WGS84 <- "+proj=longlat +datum=WGS84"
 
 saduria_latlon <- terra::project(saduria, WGS84)
+
+class(saduria_latlon)
+
+# Plot saduria densities (UTM)
+sr <- "+proj=utm +zone=33 +ellps=GRS80 +datum=WGS84 +units=m +no_defs" 
+saduria_utm <- terra::project(saduria, sr)
+
+sad_df <- terra::as.data.frame(saduria_utm, xy = TRUE)
+
+plot_map + 
+  geom_raster(data = sad_df, aes(x, y, fill = FWBiomassm_raster_19812019presHighweightcor_no0_newZi)) + 
+  scale_fill_viridis(trans = "sqrt", 
+                     name = "Saduria\nbiomass\ndensity") +  
+  theme(legend.position = "bottom") + 
+  geom_sf() + 
+  theme(axis.text.x = element_text(angle = 90),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.key.width = unit(0.4, "cm"),
+        legend.key.height = unit(0.4, "cm")) +
+  NULL
+
+ggsave(paste0(home, "/figures/supp/saduria_density.pdf"), width = 11, height = 9, units = "cm")
+
+  
+# End plot
 
 density_saduria <- terra::extract(saduria_latlon, dat %>% dplyr::select(lon, lat))
 
