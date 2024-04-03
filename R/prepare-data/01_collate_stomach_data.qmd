@@ -628,6 +628,13 @@ d2 <- d %>%
 
 nrow(d2)
 
+# Remove regurgitated stomachs
+d2 <- d2 %>%
+  # Only removing the certain regurgitated stomachs
+  mutate(n_regurgitated = replace_na(n_regurgitated, 0)) %>%
+  filter(n_regurgitated == 0)
+
+
 # Now we can plot prop empty stomachs. It seems NA prey weight can be both that the weight is missing, and that there is no prey
 d2 %>%
   filter(is.na(prey_weight_g)) %>%
@@ -638,16 +645,25 @@ d2 %>%
 # Most NA prey weights are though also associated with NA prey sp
 d2 %>%
   filter(is.na(prey_weight_g)) %>%
-  as.data.frame() %>% 
   ggplot(aes(prey_sp_code)) + 
   geom_histogram(stat = "count") +
   theme(axis.text.x = element_text(angle = 90))
 
-# If prey weight AND prey species is NA, set prey weight to 0. If prey are present I can't set weight to zero.
+d2 %>%
+  filter(is.na(prey_weight_g)) %>% 
+  ggplot(aes(factor(n_regurgitated))) + 
+  geom_histogram(stat = "count") +
+  theme(axis.text.x = element_text(angle = 90))
+
+# If prey weight AND prey species is NA, set prey weight to 0. If prey are present I can't set weight to zero
 # Check first if there are any 0 weights with prey present. 
 d2 %>% filter(prey_weight_g == 0) %>% as.data.frame()
 
-# Yes, some. Change their weights to NA because they are not true zeroes, and set prey weight 0 if both prey species and prey weight is NA, because then I can calculate proportion empty stomachs manually using sum of prey weight per species
+d2 %>% filter(prey_weight_g == 0) %>% distinct(n_regurgitated)
+
+# Yes, some. Change their weights to NA because they are not true zeroes.
+# Pers. Com. with Kate suggests it may be rounding errors?
+# Set prey weight 0 if both prey species and prey weight is NA, because then I can calculate proportion empty stomachs manually using sum of prey weight per species
 d2 <- d2 %>% 
   mutate(prey_weight_g = ifelse(!is.na(prey_sp_code) & prey_weight_g == 0, NA, prey_weight_g),
          prey_weight_g = ifelse(is.na(prey_sp_code) & is.na(prey_weight_g), 0, prey_weight_g))
@@ -735,7 +751,7 @@ d2 <- d2 %>%
   dplyr::select(-pred_weight, -pred_weight_g) %>% 
   rename(pred_weight_g = weight)
 
-# TODO: Really strange that predator size is all 9 in the biological data...
+# Really strange that predator size is all 9 in the biological data...
 d2 %>%
   dplyr::select(size, pred_size, pred_size_cm, lengthcl) %>% 
   summary()

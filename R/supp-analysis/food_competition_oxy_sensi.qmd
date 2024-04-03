@@ -77,6 +77,16 @@ d <- d %>%
          saduria_rel_weight = saduria_weight / (pred_weight_g - tot_weight)) %>% 
   dplyr::select(-ends_with("_tot")) %>% 
   dplyr::select(-predator_latin_name, date) %>% 
+  # Add small constant to large cod density because we want to take the log of it
+  mutate(large_cod_density = ifelse(large_cod_density == 0,
+                                    min(filter(d, mcod_kg_km2 > 0)$mcod_kg_km2)*0.5,
+                                    large_cod_density),
+         flounder_density = ifelse(flounder_density == 0,
+                                   min(filter(d, fle_kg_km2 > 0)$fle_kg_km2)*0.5,
+                                   flounder_density),
+         small_cod_density = ifelse(small_cod_density == 0,
+                                    min(filter(d, scod_kg_km2 > 0)$scod_kg_km2)*0.5,
+                                    small_cod_density)) %>% 
   # scale variables
   mutate(fyear = as.factor(year),
          fquarter = as.factor(quarter),
@@ -85,9 +95,9 @@ d <- d %>%
          oxygen_sc = as.numeric(scale(oxygen)),
          oxygen_ctd_sc = as.numeric(scale(oxygen_ctd)),
          density_saduria_sc = as.numeric(scale(density_saduria)),
-         flounder_density_sc = as.numeric(scale(flounder_density)),
-         large_cod_density_sc = as.numeric(scale(large_cod_density)),
-         small_cod_density_sc = as.numeric(scale(small_cod_density)))
+         flounder_density_sc = as.numeric(scale(log(flounder_density))),
+         large_cod_density_sc = as.numeric(scale(log(large_cod_density))),
+         small_cod_density_sc = as.numeric(scale(log(small_cod_density))))
 
 # Compare oxygen
 ggplot(d, aes(oxygen, oxygen_ctd)) +
@@ -110,7 +120,7 @@ for(i in unique(d$group)) {
   
   mesh <- make_mesh(dd,
                     xy_cols = c("X", "Y"),
-                    cutoff = 10)
+                    cutoff = 5)
 
   ggplot() +
     inlabru::gg(mesh$mesh) +
@@ -123,89 +133,57 @@ for(i in unique(d$group)) {
   
   # Saduria model
   
-    if(unique(dd$group) == "small cod") {
-      
-      m_sad <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + 
-                        small_cod_density_sc*density_saduria_sc + 
-                        flounder_density_sc*density_saduria_sc,
-                      data = dd,
-                      mesh = mesh,
-                      family = tweedie(),
-                      spatiotemporal = "off", 
-                      spatial = "on",
-                      time = "year")
+    m_sad <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + 
+                      small_cod_density_sc*density_saduria_sc + 
+                      flounder_density_sc*density_saduria_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off", 
+                    spatial = "on",
+                    time = "year")
   
-      sanity(m_sad)
+    sanity(m_sad)
       
-      m_sad_ctd <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_ctd_sc + 
-                            small_cod_density_sc*density_saduria_sc + 
-                            flounder_density_sc*density_saduria_sc,
-                          data = dd,
-                          mesh = mesh,
-                          family = tweedie(),
-                          spatiotemporal = "off", 
-                          spatial = "on",
-                          time = "year")
+    m_sad_ctd <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_ctd_sc + 
+                          small_cod_density_sc*density_saduria_sc + 
+                          flounder_density_sc*density_saduria_sc,
+                        data = dd,
+                        mesh = mesh,
+                        family = tweedie(),
+                        spatiotemporal = "off", 
+                        spatial = "on",
+                        time = "year")
+    sanity(m_sad_ctd)
+    
+    
+    # Benthic model
+    
+    if(unique(dd$group) %in% c("large cod", "small cod")) {
       
-      sanity(m_sad_ctd)
-      
-    } else {
-      
-      m_sad <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + 
-                        small_cod_density_sc*density_saduria_sc + 
-                        flounder_density_sc*density_saduria_sc,
+      m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                        small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
                       data = dd,
                       mesh = mesh,
                       family = tweedie(),
                       spatiotemporal = "IID", 
-                      spatial = "on",
+                      spatial = "off",
                       time = "year")
       
-      sanity(m_sad)
-  
-      m_sad_ctd <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_ctd_sc + 
-                            small_cod_density_sc*density_saduria_sc + 
-                            flounder_density_sc*density_saduria_sc,
+      sanity(m_ben)
+      
+      m_ben_ctd <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                            small_cod_density_sc*oxygen_ctd_sc + flounder_density_sc*oxygen_ctd_sc,
                           data = dd,
                           mesh = mesh,
                           family = tweedie(),
                           spatiotemporal = "IID", 
-                          spatial = "on",
+                          spatial = "off",
                           time = "year")
       
-      sanity(m_sad_ctd)
-      
-    }
-  
-  
-  # Benthic model
-  
-     if(unique(dd$group) %in% c("flounder", "small cod")) {
-       
-       m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
-                         small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
-                       data = dd,
-                       mesh = mesh,
-                       family = tweedie(),
-                       spatiotemporal = "IID", 
-                       spatial = "off",
-                       time = "year")
-       
-       sanity(m_ben)
-       
-       m_ben_ctd <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
-                             small_cod_density_sc*oxygen_ctd_sc + flounder_density_sc*oxygen_ctd_sc,
-                           data = dd,
-                           mesh = mesh,
-                           family = tweedie(),
-                           spatiotemporal = "IID", 
-                           spatial = "off",
-                           time = "year")
-       
-       sanity(m_ben_ctd)
+      sanity(m_ben_ctd)
   
      } else { 
-       
        m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
                          small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
                        data = dd,

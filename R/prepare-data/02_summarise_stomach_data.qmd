@@ -220,7 +220,7 @@ sad_df <- terra::as.data.frame(saduria_utm, xy = TRUE)
 plot_map + 
   geom_raster(data = sad_df, aes(x, y, fill = FWBiomassm_raster_19812019presHighweightcor_no0_newZi)) + 
   scale_fill_viridis(trans = "sqrt", 
-                     name = "Saduria\nbiomass\ndensity") +  
+                     name = "Saduria\nbiomass\ndensity (mg/m2)") +  
   theme(legend.position = "bottom") + 
   geom_sf() + 
   theme(axis.text.x = element_text(angle = 90),

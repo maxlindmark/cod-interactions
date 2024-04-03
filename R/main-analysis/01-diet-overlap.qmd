@@ -302,22 +302,22 @@ ggsave(paste0(home, "/figures/ordi_diet.pdf"), width = 17, height = 21, units = 
 
 ```{r}
 # Calculate relative prey weight and average by size-class
-year_rect_sum <- d2 %>% 
+qyear_rect_sum <- d2 %>% 
   pivot_longer(ends_with("_tot")) %>% 
   filter(pred_length_cm > 10 & pred_length_cm < 50) %>% # These are the sizes we work with
-  left_join(d %>% dplyr::select(year, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") %>% 
+  left_join(d %>% dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") %>% 
   mutate(group = "Flounder",
          group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
          group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) %>% 
-  group_by(year, ices_rect, group) %>%
+  group_by(year, quarter, ices_rect, group) %>%
   summarise(n = length(unique(pred_id)),
             tot_prey = sum(value)) %>% 
   ungroup() %>% 
-  group_by(year, ices_rect) %>% 
+  group_by(year, quarter, ices_rect) %>% 
   mutate(min_stom = min(n)) %>% 
   ungroup() %>%
-  mutate(id = paste(year, ices_rect, group, sep = "_")) %>% 
-  dplyr::select(-year, -ices_rect, -group) %>% 
+  mutate(id = paste(year, quarter, ices_rect, group, sep = "_")) %>% 
+  dplyr::select(-year, -quarter, -ices_rect, -group) %>% 
   filter(n > 3)
 
 # year_rect_sum %>% arrange(n) %>% as.data.frame()
@@ -327,16 +327,16 @@ year_rect_sum <- d2 %>%
 diet_prop <- d2 %>% 
   pivot_longer(ends_with("_tot")) %>% 
   filter(pred_length_cm > 10 & pred_length_cm < 50) %>% # These are the sizes we work with
-  left_join(d %>% dplyr::select(year, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") %>% 
+  left_join(d %>% dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") %>% 
   mutate(group = "Flounder",
          group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
          group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) %>% 
-  group_by(year, ices_rect, group, name) %>%
+  group_by(year, quarter, ices_rect, group, name) %>%
   summarise(tot_prey_by_grp = sum(value)) %>% 
   ungroup() %>%
-  mutate(id = paste(year, ices_rect, group, sep = "_")) %>% 
-  filter(id %in% unique(year_rect_sum$id)) %>% 
-  left_join(year_rect_sum, by = "id") %>% 
+  mutate(id = paste(year, quarter, ices_rect, group, sep = "_")) %>% 
+  filter(id %in% unique(qyear_rect_sum$id)) %>% 
+  left_join(qyear_rect_sum, by = "id") %>% 
   mutate(prop_prey = tot_prey_by_grp / tot_prey)
   
 # Calculate overlap by year and ices rect and species group. Make the proportions wide!
@@ -347,7 +347,7 @@ diet_prop_wide <- diet_prop %>%
   mutate(abs_f_sc = abs(Flounder - `Small cod`),
          abs_f_lc = abs(Flounder - `Large cod`),
          abs_lc_sc = abs(`Large cod` - `Small cod`)) %>% 
-  group_by(year, ices_rect) %>% 
+  group_by(year, quarter, ices_rect) %>% 
   summarise(`Flounder\nSmall cod` = 1 - 0.5*sum(abs_f_sc),
             `Flounder\nLarge cod` = 1 - 0.5*sum(abs_f_lc),
             `Small cod\nLarge cod` = 1 - 0.5*sum(abs_lc_sc))
@@ -362,7 +362,7 @@ ovr <- diet_prop_wide %>%
                names_to = "overlap_group", values_to = "overlap") %>% 
   drop_na(overlap)
 
-ovr
+summary(ovr$overlap)
 
 # Plot diet overlap
 # plot_map +
@@ -561,7 +561,8 @@ unique(is.na(bio_data[, common_cols]))
 # Trawl data has some NA's in the common columns. Select only the important columns
 colnames(trawl_data_wide)[!colnames(trawl_data_wide) %in% colnames(bio_data)]
 
-trawl_data_wide <- trawl_data_wide %>% dplyr::select(haul_id, fle_kg_km2, mcod_kg_km2, scod_kg_km2, lat, lon, bottom_depth, X, Y, smhi_serial_no)
+trawl_data_wide <- trawl_data_wide %>%
+  dplyr::select(haul_id, fle_kg_km2, mcod_kg_km2, scod_kg_km2, lat, lon, bottom_depth, X, Y, smhi_serial_no)
 
 bio_data <- left_join(bio_data, trawl_data_wide, by = "haul_id")
 
@@ -572,10 +573,10 @@ Summarise haul data on the ICES rectangle level to join into the diet
 
 ```{r}
 # Now calculate spatial overlap in biomass density... 
-year_rect_sum_biom <- bio_data %>% 
-  dplyr::select(fle_kg_km2, mcod_kg_km2, scod_kg_km2, ices, year) %>% 
+qyear_rect_sum_biom <- bio_data %>% 
+  dplyr::select(fle_kg_km2, mcod_kg_km2, scod_kg_km2, ices, year, quarter) %>% 
   rename(ices_rect = ices) %>% #,
-  group_by(year, ices_rect) %>%
+  group_by(year, quarter, ices_rect) %>%
   summarise(mean_fle = mean(fle_kg_km2),
             mean_scod = mean(scod_kg_km2),
             mean_mcod = mean(mcod_kg_km2)) 
@@ -584,7 +585,7 @@ year_rect_sum_biom <- bio_data %>%
 ovr <- ovr %>% 
   pivot_wider(names_from = overlap_group, values_from = overlap) %>% 
   drop_na() %>% 
-  left_join(year_rect_sum_biom)
+  left_join(qyear_rect_sum_biom)
 ```
 
 Fit zero inflated beta regressions using brms
@@ -598,13 +599,15 @@ ovr <- ovr %>%
   clean_names() %>% 
   pivot_longer(c("flounder_small_cod", "flounder_large_cod", "small_cod_large_cod")) %>% 
   mutate(value = ifelse(value < 1e-15, 0, value),
-         mean_biom_sc = as.numeric(scale(mean_fle + mean_scod + mean_mcod) / 3)#,
+         mean_biom_sc = as.numeric(scale(log(mean_fle + mean_scod + mean_mcod) / 3))#,
          )
 
+write_csv(ovr, paste0(paste0(home, "/data/clean/s_overlap.csv")))
+
 zib_model <- bf(
-  value ~ 0 + name*mean_biom_sc,
-  phi ~ 0 + name,
-  zi ~ 0 + name,
+  value ~ name*mean_biom_sc,
+  phi ~ name,
+  zi ~ name,
   family = zero_inflated_beta()
 )
 
@@ -617,6 +620,13 @@ fit <- brm(
 )
 
 fit
+
+# https://mc-stan.org/misc/warnings.html
+tibble(rhat = rhat(fit),
+       par = names(rhat(fit))) %>% 
+  arrange(desc(rhat)) %>% 
+  arrange(desc(rhat)) %>% 
+  as.data.frame()
 
 zi_intercept <- tidy(fit, effects = "fixed") %>% 
   filter(component == "zi") %>% 
@@ -664,13 +674,15 @@ p1 <- ovr %>%
          name2 = ifelse(name == "small_cod_large_cod", "Small cod\nLarge cod", name2)) %>% 
   add_epred_draws(fit) %>%
   ggplot(aes(.epred, name2)) +
-  stat_pointinterval(.width = c(.66, .95)) + 
+  geom_jitter(data = ovr, aes(value, name2, color = name2), height = 0.2, width = 0, alpha = 0.4) +
+  stat_pointinterval(.width = c(.66, .95), color = "gray30") +
   geom_vline(xintercept = 0.6, linetype = 2, alpha = 0.6) +
-  geom_jitter(data = ovr, aes(value, name2), height = 0.2, width = 0, alpha = 0.3, color = "grey50") +
-  labs(y = "Schoener's overlap index", x = "") +
-  geom_stripped_rows() +
+  scale_color_brewer(palette = "Set1") + 
+  labs(y = "Schoener's overlap index", x = "", color = "") +
+  geom_stripped_rows(color = NA) +
   coord_cartesian(expand = 0, xlim = c(-0.03, 1)) +
   theme(plot.margin = unit(c(0, 0.3, 0, 0), "cm")) +
+  guides(color = "none") +
   NULL
 
 pal <- brewer.pal(name = "RdBu", n = 7)
@@ -696,19 +708,23 @@ p2 <- fit %>%
          "Small cod\nLarge cod" = b_mean_biom_sc + `b_namesmall_cod_large_cod:mean_biom_sc`,
          ) %>%
   pivot_longer(c(`Flounder\nLarge cod`, `Flounder\nSmall cod`, `Small cod\nLarge cod`),
-               names_to = "Overlap group", values_to = "slope") %>% 
-  ggplot(aes(slope, `Overlap group`, fill = after_stat(x < 0))) +
+               names_to = "name2", values_to = "slope") %>% 
+  #ggplot(aes(slope, `Overlap group`, fill = after_stat(x < 0))) +
+  ggplot(aes(slope, name2, fill = name2, color = name2, alpha = after_stat(x < 0))) +
+  scale_fill_brewer(palette = "Set1", name = "") +
+  scale_color_brewer(palette = "Set1", name = "") + 
+  scale_alpha_manual(values = c(0.4, 0.7)) + 
   ggdist::stat_eye() +
+  stat_pointinterval(.width = c(.66, .95), color = "gray10") +
   labs(x = "", y = "Slope of biomass density\non the mean Schoener's diet overlap") +
   geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.6) +
-  scale_fill_manual(values = c("gray80", alpha(pal[6], 0.8))) + 
-  theme(legend.position.inside = c(0.15, 0.1)) + 
-  guides(fill = guide_legend(position = "inside")) +
-  geom_stripped_rows() +
+  theme(legend.position.inside = c(0.15, 0.1)) +
+  guides(alpha = guide_legend(position = "inside"),
+         fill = "none", color = "none") +
+  geom_stripped_rows(aes(slope, name2, fill = name2),
+                     inherit.aes = FALSE) +
   coord_cartesian(expand = 0) +
   NULL
-
-p2
 
 # Conditional
 p3 <- ovr %>%
@@ -719,7 +735,7 @@ p3 <- ovr %>%
          name2 = ifelse(name == "small_cod_large_cod", "Small cod\nLarge cod", name2)) %>% 
   add_epred_draws(fit) %>%
   ggplot(aes(x = mean_biom_sc, y = value, fill = name2, color = name2)) +
-  stat_lineribbon(aes(y = .epred), .width = c(.95), alpha = 1/4) +
+  stat_lineribbon(aes(y = .epred), .width = c(.95), alpha = 0.6) +
   geom_point(data = ovr, alpha = 0.5) +
   scale_fill_brewer(palette = "Pastel1") +
   scale_color_brewer(palette = "Set1") + 
@@ -727,6 +743,8 @@ p3 <- ovr %>%
   labs(y = "Schoener's overlap index", x = "Scaled cod and flounder mean biomass density",
        fill = "", color = "") + 
   guides(fill = guide_legend(position = "inside"))
+
+p3
 
 pp <- (p1 + p2) + plot_layout(axes = "collect")
 
@@ -744,7 +762,9 @@ sum <- ovr %>%
          name2 = ifelse(name == "small_cod_large_cod", "Small cod\nLarge cod", name2)) %>% 
   add_epred_draws(fit) %>% 
   group_by(name) %>% 
-  summarise(mean = mean(.epred))
+  summarise(mean = mean(.epred),
+            lwr = quantile(.epred, probs = 0.025),
+            upr = quantile(.epred, probs = 0.975))
 
 sum
 

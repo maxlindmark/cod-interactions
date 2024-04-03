@@ -1,5 +1,5 @@
 ---
-title: "Food competition analysis - cross validation"
+title: "Food competition analysis - AIC & cross validation"
 author: "Max Lindmark"
 date: today
 date-format: iso
@@ -68,6 +68,16 @@ d <- d %>%
          saduria_rel_weight = saduria_weight / (pred_weight_g - tot_weight)) %>% 
   dplyr::select(-ends_with("_tot")) %>% 
   dplyr::select(-predator_latin_name, date) %>% 
+  # Add small constant to large cod density because we want to take the log of it
+  mutate(large_cod_density = ifelse(large_cod_density == 0,
+                                    min(filter(d, mcod_kg_km2 > 0)$mcod_kg_km2)*0.5,
+                                    large_cod_density),
+         flounder_density = ifelse(flounder_density == 0,
+                                   min(filter(d, fle_kg_km2 > 0)$fle_kg_km2)*0.5,
+                                   flounder_density),
+         small_cod_density = ifelse(small_cod_density == 0,
+                                    min(filter(d, scod_kg_km2 > 0)$scod_kg_km2)*0.5,
+                                    small_cod_density)) %>% 
   # scale variables
   mutate(fyear = as.factor(year),
          fquarter = as.factor(quarter),
@@ -75,16 +85,234 @@ d <- d %>%
          depth_sc = as.numeric(scale(depth)),
          oxygen_sc = as.numeric(scale(oxygen)),
          density_saduria_sc = as.numeric(scale(density_saduria)),
-         flounder_density_sc = as.numeric(scale(flounder_density)),
-         large_cod_density_sc = as.numeric(scale(large_cod_density)),
-         small_cod_density_sc = as.numeric(scale(small_cod_density)))
+         flounder_density_sc = as.numeric(scale(log(flounder_density))),
+         large_cod_density_sc = as.numeric(scale(log(large_cod_density))),
+         small_cod_density_sc = as.numeric(scale(log(small_cod_density))))
+
 ```
 
 ## Fit models
 
 Groups are: small cod, large cod and flounder. Response variables are: saduria_rel_weight, benthic_rel_weight or total weight. The latter is only for adult cod, because essentially all prey are benthic for small cod and flounder.
 
-Covariates are: \~ 0 + fyear + fquarter + depth_sc + spatial + spatiotemporal random fields + density covariates. For saduria, we use saduria also in interaction with cod and flounder. For cod we use small cod because large and small cod are very correlated. For benthic and total prey, we instead use oxygengen, more as a proxygen, as the interaction variable
+Covariates are: \~ 0 + fyear + fquarter + depth_sc + spatial + spatiotemporal random fields + density covariates. For saduria, we use saduria also in interaction with cod and flounder. For cod we use small cod because large and small cod are very correlated. For benthic and total prey, we instead use oxygen, more as a proxy, as the interaction variable
+
+### Compare models with different spatial terms and evaluate AIC
+
+```{r aic}
+#| message: false
+#| warning: false
+aic_list <- list()
+
+for(i in unique(d$group)) {
+
+  dd <- filter(d, group == i)
+
+  mesh <- make_mesh(dd,
+                    xy_cols = c("X", "Y"),
+                    cutoff = 5)
+
+  print(i)
+
+  # Saduria model - non spatial
+  m_sad_0 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc +
+                      small_cod_density_sc*density_saduria_sc +
+                      flounder_density_sc*density_saduria_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off",
+                    spatial = "off",
+                    time = "year")
+
+  sanity(m_sad_0)
+
+  # Saduria model - spatial
+  m_sad_1 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc +
+                      small_cod_density_sc*density_saduria_sc +
+                      flounder_density_sc*density_saduria_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off",
+                    spatial = "on",
+                    time = "year")
+
+  sanity(m_sad_1)
+
+  # Saduria model - spatiotemporal
+  m_sad_2 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc +
+                      small_cod_density_sc*density_saduria_sc +
+                      flounder_density_sc*density_saduria_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID",
+                    spatial = "off",
+                    time = "year")
+
+  sanity(m_sad_2)
+
+  # Saduria model - spatial and spatiotemporal
+  m_sad_3 <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc +
+                      small_cod_density_sc*density_saduria_sc +
+                      flounder_density_sc*density_saduria_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID",
+                    spatial = "on",
+                    time = "year")
+
+  sanity(m_sad_3)
+
+
+
+  # Benthos model - non spatial
+  m_ben_0 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off",
+                    spatial = "off",
+                    time = "year")
+
+  sanity(m_ben_0)
+
+  # Benthos model - spatial
+  m_ben_1 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off",
+                    spatial = "on",
+                    time = "year")
+
+  sanity(m_ben_1)
+
+
+  # Benthos model - spatiotemporal
+  m_ben_2 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID",
+                    spatial = "off",
+                    time = "year")
+
+  sanity(m_ben_2)
+
+
+  # Benthos model - spatial and spatiotemporal
+  m_ben_3 <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID",
+                    spatial = "on",
+                    time = "year")
+
+  sanity(m_ben_3)
+
+
+  # Total model for adult cod only
+
+  if(unique(dd$group) == "large cod") {
+
+    m_tot_0 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off",
+                    spatial = "off",
+                    time = "year")
+
+    sanity(m_tot_0)
+
+    m_tot_1 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "off",
+                    spatial = "on",
+                    time = "year")
+
+    sanity(m_tot_1)
+
+    m_tot_2 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID",
+                    spatial = "off",
+                    time = "year")
+
+    sanity(m_tot_2)
+
+    m_tot_3 <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc +
+                      small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "IID",
+                    spatial = "on",
+                    time = "year")
+
+    sanity(m_tot_3)
+
+  } else {
+
+    # If *NOT* large cod, the total model gets the first model object...
+    m_tot_0 <- m_sad_0
+    m_tot_1 <- m_sad_0
+    m_tot_2 <- m_sad_0
+    m_tot_3 <- m_sad_0
+
+  }
+
+  # Combine all AIC values
+  aic <- data.frame(response = rep(c("sad", "ben", "tot"), times = 4),
+                    group = i,
+                    model = rep(c("non-spatial", "spatial", "spatiotemporal", "spatial and spatiotemporal"), each = 3),
+                    aic = c(AIC(m_sad_0), AIC(m_ben_0), AIC(m_tot_0),
+                            AIC(m_sad_1), AIC(m_ben_1), AIC(m_tot_1),
+                            AIC(m_sad_2), AIC(m_ben_2), AIC(m_tot_2),
+                            AIC(m_sad_3), AIC(m_ben_3), AIC(m_tot_3)))
+
+  aic_list[[i]] <- aic
+
+}
+
+daic <- bind_rows(aic_list) %>%
+  mutate(keep = ifelse(response == "tot" & !group == "large cod", "N", "Y")) %>%
+  filter(keep == "Y") %>%
+  dplyr::select(-keep) %>%
+  group_by(response, group) %>%
+  mutate(delta_aic = aic - min(aic))
+
+ggplot(daic, aes(group, delta_aic, color = model)) +
+  geom_point(position = position_dodge2(width = 0.1)) +
+  facet_wrap(~response) +
+  scale_color_brewer(palette = "Dark2") +
+  theme(legend.position = "bottom")
+
+# Make this a table
+daic %>%
+  dplyr::select(-aic) %>%
+  arrange(response) %>%
+  pivot_wider(names_from = model, values_from = delta_aic)
+```
+
+```{r}
+knitr::knit_exit()
+```
 
 ### Compare models with different spatial terms and evaluate log-likelihoods
 
@@ -97,7 +325,7 @@ for(i in unique(d$group)) {
     
   mesh <- make_mesh(dd,
                     xy_cols = c("X", "Y"),
-                    cutoff = 10)
+                    cutoff = 5)
   
   # Saduria model - non spatial
   m_sad_0 <- sdmTMB_cv(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc +
@@ -295,6 +523,7 @@ ggplot(dcv, aes(group, delta_cv, color = model)) +
 dcv %>% 
   dplyr::select(-cv) %>% 
   arrange(response) %>% 
-  pivot_wider(names_from = model, values_from = delta_cv)
+  pivot_wider(names_from = model, values_from = delta_cv) %>% 
+  as.data.frame()
 ```
 
