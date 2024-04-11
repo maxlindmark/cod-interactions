@@ -55,13 +55,46 @@ source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/
 ## Read data
 
 ```{r read data}
-#| warning=FALSE
+#| warning: false
 d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
+
+# d %>%
+#   drop_na(group) %>%
+#   group_by(haul_id, group) %>%
+#   summarise(n_pred = length(unique(pred_id))) %>%
+#   ggplot(aes(n_pred)) +
+#   geom_histogram() +
+#   facet_wrap(~group)
+# 
+# d %>%
+#   drop_na(group) %>%
+#   group_by(year, quarter, ices_rect, group) %>%
+#   summarise(n_pred = length(unique(pred_id))) %>%
+#   ggplot(aes(n_pred)) +
+#   geom_histogram() +
+#   facet_wrap(~group)
 ```
 
 # Diet similarity using bar plots and ordination
 
 ## Ordination using `gllvm`
+
+```{r}
+# Test: which prey are found in most cod stomachs?
+# str(d)
+# 
+# d %>% 
+#   pivot_longer(ends_with("_tot")) %>% 
+#   group_by(name, group) %>% 
+#   count(value == 0) %>% 
+#   filter(`value == 0` == TRUE) %>% 
+#   drop_na(group) %>% 
+#   ggplot(aes(n, name, n)) + 
+#   geom_bar(stat = "identity") + 
+#   facet_wrap(~group, ncol = 1, scales = "free") + 
+#   ggtitle("# stomachs without these prey")
+```
+
 
 ```{r}
 d2 <- d %>%
@@ -270,6 +303,9 @@ n_dat <- bind_rows(n_cod %>% mutate(predator = "Cod"),
          max_size = ifelse(predator_length_grp == "(0,5]", 5, max_size),
          max_size = ifelse(predator_length_grp == "(5,10]", 10, max_size))
 
+area_plot <- area_plot %>% 
+  mutate(name = str_to_sentence(name))
+
 bar_diet <- 
   ggplot(data = area_plot, aes(x = max_size, y = prop, fill = name, color = name)) +
   geom_col(width = 4.3) +
@@ -284,6 +320,7 @@ bar_diet <-
   scale_x_continuous(breaks = seq(0, 100, 5)) +
   labs(y = "Proportion", x = "Max. predator size in group [cm]") +
   theme(legend.key.size = unit(0.2, 'cm'),
+        #legend.text = element_text(face = "italic"),
         legend.position = "bottom",
         legend.margin = margin(-0.3, 0, 0, 0, unit = "cm"))
 ```
@@ -599,8 +636,17 @@ ovr <- ovr %>%
   clean_names() %>% 
   pivot_longer(c("flounder_small_cod", "flounder_large_cod", "small_cod_large_cod")) %>% 
   mutate(value = ifelse(value < 1e-15, 0, value),
-         mean_biom_sc = as.numeric(scale(log(mean_fle + mean_scod + mean_mcod) / 3))#,
-         )
+         mean_biom_sc = as.numeric(scale(log(mean_fle + mean_scod + mean_mcod) / 3)),
+         ) #%>% 
+  # Scale densities before averaging?
+  # mutate(mean_scod2 = log(mean_scod)/max(log(mean_scod)),
+  #        mean_fle2 = log(mean_fle)/max(log(mean_fle)),
+  #        mean_mcod2 = log(mean_mcod)/max(log(mean_mcod)),
+  #        mean_biom_sc2 = as.numeric(scale(mean_scod2 + mean_fle2 + mean_mcod2) / 3))
+  
+# ggplot(ovr, aes(mean_biom_sc, mean_biom_sc2)) + 
+#   geom_point()
+# cor(ovr$mean_biom_sc, ovr$mean_biom_sc2)
 
 write_csv(ovr, paste0(paste0(home, "/data/clean/s_overlap.csv")))
 
@@ -678,7 +724,7 @@ p1 <- ovr %>%
   stat_pointinterval(.width = c(.66, .95), color = "gray30") +
   geom_vline(xintercept = 0.6, linetype = 2, alpha = 0.6) +
   scale_color_brewer(palette = "Set1") + 
-  labs(y = "Schoener's overlap index", x = "", color = "") +
+  labs(x = "Schoener's overlap index", y = "", color = "") +
   geom_stripped_rows(color = NA) +
   coord_cartesian(expand = 0, xlim = c(-0.03, 1)) +
   theme(plot.margin = unit(c(0, 0.3, 0, 0), "cm")) +
@@ -716,7 +762,7 @@ p2 <- fit %>%
   scale_alpha_manual(values = c(0.4, 0.7)) + 
   ggdist::stat_eye() +
   stat_pointinterval(.width = c(.66, .95), color = "gray10") +
-  labs(x = "", y = "Slope of biomass density\non the mean Schoener's diet overlap") +
+  labs(y = "", x = "Slope of biomass density\non the mean Schoener's diet overlap") +
   geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.6) +
   theme(legend.position.inside = c(0.15, 0.1)) +
   guides(alpha = guide_legend(position = "inside"),
