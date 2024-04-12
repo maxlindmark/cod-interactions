@@ -327,7 +327,7 @@ p2 <-
   NULL
 
 p1 / p2 +
-  plot_annotation(tag_levels = "A") +
+  plot_annotation(tag_levels = "a") +
   plot_layout(axes = "collect", guides = "collect") & 
   theme(legend.position = "bottom") 
 

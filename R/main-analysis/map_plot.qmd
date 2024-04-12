@@ -32,6 +32,7 @@ library(janitor)
 library(terra)
 library(viridis)
 library(RColorBrewer)
+library(ggspatial)
 
 home <- here::here()
 # Source code for map plots
@@ -71,18 +72,24 @@ plot_map +
         legend.direction = "horizontal",
         legend.box = "horizontal",
         legend.key.size = unit(0.02, "cm")) +
-  guides(colour = guide_legend(title.position = "top", title.hjust = 0.5),
-         size = guide_legend(title.position = "top", title.hjust = 0.5, ncol = 2)) +
+  guides(colour = guide_legend(title.position = "top", title.hjust = 0.5, position = "inside"),
+         size = guide_legend(title.position = "top", title.hjust = 0.5, ncol = 2, position = "inside")) +
   labs(shape = "Quarter", color = "Year") + 
   annotate("text", label = "Sweden", x = xmin2 + 0.15*xrange, y = ymin2 + 0.75*yrange, color = "gray50", size = 2.6) +
   annotate("text", label = "Denmark", x = xmin2 - 0.14*xrange, y = ymin2 + 0.2*yrange, color = "gray50", size = 2.6, angle = 60) +
-  annotate("text", label = "Germany", x = xmin2 - 0.045*xrange, y = ymin2 - 0.3*yrange, color = "gray50", size = 2.6) +
+  annotate("text", label = "Germany", x = xmin2 - 0.06*xrange, y = ymin2 - 0.26*yrange, color = "gray50", size = 2.6) +
   annotate("text", label = "Poland", x = xmin2 + 0.7*xrange, y = ymin2 - 0.12*yrange, color = "gray50", size = 2.6) +
   annotate("text", label = "Russia", x = xmin2 + 1.18*xrange, y = ymin2 - 0.05*yrange, color = "gray50", size = 2.6) +
   annotate("text", label = "Lithuania", x = xmin2 + 1.24*xrange, y = ymin2 + 0.28*yrange, color = "gray50", size = 2.6, angle = 75) +
-  annotate("text", label = "Latvia", x = xmin2 + 1.24*xrange, y = ymin2 + 0.55*yrange, color = "gray50", size = 2.6, angle = 75)
+  annotate("text", label = "Latvia", x = xmin2 + 1.24*xrange, y = ymin2 + 0.55*yrange, color = "gray50", size = 2.6, angle = 75) + 
+  annotation_scale(bar_cols = c("grey30", "white"), height = unit(0.1, "cm")) + 
+  annotation_north_arrow(location = "tl", which_north = "true", height = unit(0.85, "cm"),
+                         width = unit(0.85, "cm"), pad_x = unit(0.1, "in"), pad_y = unit(0.1, "in"),
+                         style = north_arrow_fancy_orienteering(
+                           fill = c("grey40", "white"),
+                           line_col = "grey20"))
 
-ggsave(paste0(home, "/figures/map_plot.pdf"), width = 11, height = 10, units = "cm")
+ggsave(paste0(home, "/figures/map_plot.pdf"), width = 14, height = 12, units = "cm")
 ```
 
 

@@ -330,7 +330,7 @@ bar_diet <-
 ```{r}
 #| fig-height: 8
 
-bar_diet / ordi + plot_annotation(tag_levels = "A") #+ plot_layout(heights = c(1, 1.6))
+bar_diet / ordi + plot_annotation(tag_levels = "a") #+ plot_layout(heights = c(1, 1.6))
 
 ggsave(paste0(home, "/figures/ordi_diet.pdf"), width = 17, height = 21, units = "cm")
 ```
@@ -795,7 +795,7 @@ p3
 pp <- (p1 + p2) + plot_layout(axes = "collect")
 
 pp / p3 +
-  plot_annotation(tag_levels = "A")
+  plot_annotation(tag_levels = "a")
 
 ggsave(paste0(home, "/figures/schoener_zib.pdf"), width = 17, height = 20, units = "cm")
 
