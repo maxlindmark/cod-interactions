@@ -32,6 +32,9 @@ data/*
 !data/clean/
 data/clean/ctd_trawl_joined.csv
 
+data/clean/full_stomach_data.csv
+
+
 # Old text docs
 /text
 

@@ -45,7 +45,7 @@ source(paste0(home, "/R/functions/map-plot.R"))
 ```{r read data}
 #| warning: false
 
-d <- read_csv(paste0(home, "/data/clean/full_stomach_data.csv"))
+d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
 ```
 
 ## Plot
