@@ -37,6 +37,7 @@ data/clean/full_stomach_data.csv
 
 # Old text docs
 /text
+/drafts
 
 # Old scripts
 *scrap
