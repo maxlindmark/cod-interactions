@@ -32,6 +32,7 @@ library(devtools)
 library(patchwork)
 library(ggstats)
 library(ggh4x)
+library(viridis)
 library(sdmTMBextra)
 
 # Source map-plot
@@ -44,31 +45,31 @@ source(paste0(home, "/R/functions/map-plot.R"))
 ```{r read data}
 #| warning: false
 
-d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv")) %>% 
-  drop_na(group) %>% 
+d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv")) |> 
+  drop_na(group) |> 
   drop_na(oxy)
 
-t <- d %>% filter(fle_kg_km2 > 0)
-t <- d %>% filter(mcod_kg_km2 > 0)
-t <- d %>% filter(scod_kg_km2 > 0)
+t <- d |> filter(fle_kg_km2 > 0)
+t <- d |> filter(mcod_kg_km2 > 0)
+t <- d |> filter(scod_kg_km2 > 0)
 
 # Calculate relative prey weights (saduria and benthos)
-d <- d %>% 
+d <- d |> 
   rename(oxygen = oxy) %>% 
   mutate(tot_weight = rowSums(select(., ends_with('_tot'))),  
          benthic_weight = amphipoda_tot + bivalvia_tot + gadus_morhua_tot +
            gobiidae_tot + mysidae_tot + non_bio_tot + 
            other_crustacea_tot + other_tot + other_pisces_tot + platichthys_flesus_tot +
-           polychaeta_tot + saduria_entomon_tot) %>% 
+           polychaeta_tot + saduria_entomon_tot) |> 
   rename(saduria_weight = saduria_entomon_tot,
          flounder_density = fle_kg_km2,
          large_cod_density = mcod_kg_km2,
-         small_cod_density = scod_kg_km2) %>% 
+         small_cod_density = scod_kg_km2) |> 
   mutate(tot_rel_weight = tot_weight / (pred_weight_g - tot_weight), 
          benthic_rel_weight = benthic_weight / (pred_weight_g - tot_weight),
-         saduria_rel_weight = saduria_weight / (pred_weight_g - tot_weight)) %>% 
-  dplyr::select(-ends_with("_tot")) %>% 
-  dplyr::select(-predator_latin_name, date) %>% 
+         saduria_rel_weight = saduria_weight / (pred_weight_g - tot_weight)) |> 
+  dplyr::select(-ends_with("_tot")) |> 
+  dplyr::select(-predator_latin_name, date) |> 
   # Add small constant to large cod density because we want to take the log of it
   mutate(large_cod_density = ifelse(large_cod_density == 0,
                                     min(filter(d, mcod_kg_km2 > 0)$mcod_kg_km2)*0.5,
@@ -78,8 +79,8 @@ d <- d %>%
                                    flounder_density),
          small_cod_density = ifelse(small_cod_density == 0,
                                     min(filter(d, scod_kg_km2 > 0)$scod_kg_km2)*0.5,
-                                    small_cod_density)) %>% 
-  # scale variables
+                                    small_cod_density)) |> 
+  # Scale variables
   mutate(fyear = as.factor(year),
          fquarter = as.factor(quarter),
          fhaul_id = as.factor(haul_id),
@@ -88,7 +89,70 @@ d <- d %>%
          density_saduria_sc = as.numeric(scale(density_saduria)),
          flounder_density_sc = as.numeric(scale(log(flounder_density))),
          large_cod_density_sc = as.numeric(scale(log(large_cod_density))),
-         small_cod_density_sc = as.numeric(scale(log(small_cod_density))))
+         small_cod_density_sc = as.numeric(scale(log(small_cod_density)))) |> 
+  # Scale length by group ..
+  mutate(pred_length_cm_sc = as.numeric(scale(pred_length_cm)),
+         .by = group)
+```
+
+Data overview
+
+```{r}
+d |> 
+  rename("Relative benthic weight" = "benthic_rel_weight",
+         "Relative Saduria weight" = "saduria_rel_weight") |> 
+  pivot_longer(c("Relative benthic weight", "Relative Saduria weight")) |>
+  mutate(group = str_to_sentence(group)) |> 
+  ggplot(aes(value)) + 
+  ggh4x::facet_grid2(factor(group, levels = c("Flounder", "Small cod", "Large cod"))~name,
+                     scales = "free", independent = "all") + 
+  geom_density(color = NA, alpha = 0.8, fill = "grey30") + 
+  labs(y = "Density", x = "Value") + 
+  NULL
+
+ggsave(paste0(home, "/figures/supp/data_distribution.pdf"), width = 17, height = 17, units = "cm")
+
+# Size distribution by year
+
+t <- d |> filter(group == "large cod")
+
+hist(t$pred_length_cm)
+
+d |> 
+  distinct(pred_id, .keep_all = TRUE) |> 
+  mutate(group = str_to_sentence(group)) |> 
+  ggplot(aes(pred_length_cm, color = as.factor(year))) + 
+  facet_wrap(~group, scales = "free", ncol = 1) + 
+  geom_density(alpha = 0.8, fill = NA) + 
+  labs(y = "Density", x = "Predator length (cm)", color = "Year") + 
+  scale_color_viridis(discrete = TRUE, option = "mako") +
+  NULL
+
+ggsave(paste0(home, "/figures/supp/predator_sizes.pdf"), width = 11, height = 17, units = "cm")
+
+# Sample size per haul
+d |> 
+  summarise(n = length(unique(pred_id)), .by = haul_id) |> 
+  ggplot(aes(n)) +
+  geom_histogram()
+
+# How many with 3 or fewer and what are their sample sizes?
+d |> 
+  summarise(n = length(unique(pred_id)), .by = haul_id) |> 
+  mutate(s = ifelse(n < 3, "s", "l")) |> 
+  summarise(n = n(), .by = s)
+# (29/316)*100
+
+# What is the size range of those 10%?
+d |> 
+  mutate(n = length(unique(pred_id)), .by = haul_id) |> 
+  filter(n > 1 & n < 11) |> 
+  summarise(max = max(pred_length_cm),
+            min = min(pred_length_cm),
+            .by = c(group, haul_id)) |> 
+  mutate(diff = max - min) |> 
+  as.data.frame()
+  #summarise(mean = mean(diff))
 
 ```
 
@@ -98,7 +162,7 @@ Correlation between variables
 
 ```{r}
 # Plot correlation between variables
-d_cor <- d %>%
+d_cor <- d |>
   dplyr::select("oxygen_sc", "density_saduria_sc", "flounder_density_sc",
                 "large_cod_density_sc", "small_cod_density_sc", "depth_sc")
 
@@ -108,17 +172,14 @@ library(ggcorrplot)
 ggcorrplot(corr, hc.order = TRUE, type = "lower", lab = TRUE, lab_size = 2.5) +
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.3))
-```
 
-Sample size 
-
-```{r samples size}
-d %>%
-  group_by(species) %>% 
+# Sample size 
+d |>
+  group_by(species) |> 
   summarise(n = n())
 
-d %>%
-  group_by(species, quarter) %>% 
+d |>
+  group_by(species, quarter) |> 
   summarise(n = n())
 ```
 
@@ -132,10 +193,10 @@ Model random effect structure is selected with AIC (see script 02-)
 #| message: false
 #| warning: false
 # This is the reason we don't do total weight for flounder and small cod
-d %>%
-  filter(tot_rel_weight > 0) %>% 
-  group_by(group) %>% 
-  mutate(ben_prop = benthic_rel_weight / tot_rel_weight) %>% 
+d |>
+  filter(tot_rel_weight > 0) |> 
+  group_by(group) |> 
+  mutate(ben_prop = benthic_rel_weight / tot_rel_weight) |> 
   summarise(mean_ben_prop = mean(ben_prop))
 ```
 
@@ -177,13 +238,13 @@ for(i in unique(d$group)) {
   
   # Saduria model
   
-  m_sad <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + 
+  m_sad <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + pred_length_cm_sc +
                     small_cod_density_sc*density_saduria_sc + 
                     flounder_density_sc*density_saduria_sc,
                   data = dd,
                   mesh = mesh,
                   family = tweedie(),
-                  spatiotemporal = "IID", 
+                  spatiotemporal = "iid", 
                   spatial = "on",
                   time = "year")
   print(i)
@@ -196,12 +257,12 @@ for(i in unique(d$group)) {
     if(unique(dd$group) %in% c("large cod", "small cod")) {
       
       
-      m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+      m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + pred_length_cm_sc +
                         small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
                       data = dd,
                       mesh = mesh,
                       family = tweedie(),
-                      spatiotemporal = "IID", 
+                      spatiotemporal = "iid", 
                       spatial = "off", 
                       time = "year")
       print(i)
@@ -210,12 +271,12 @@ for(i in unique(d$group)) {
       
     } else {
       
-      m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+      m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + pred_length_cm_sc +
                         small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
                       data = dd,
                       mesh = mesh,
                       family = tweedie(),
-                      spatiotemporal = "IID", 
+                      spatiotemporal = "iid", 
                       spatial = "on",
                       time = "year")
       print(i)
@@ -226,7 +287,7 @@ for(i in unique(d$group)) {
        
    
   # Spatial and spatiotemporal random effects
-  d_haul <- dd %>%
+  d_haul <- dd |>
     distinct(haul_id, .keep_all = TRUE)
 
   preds_sad <- predict(m_sad, newdata = d_haul)
@@ -250,8 +311,8 @@ for(i in unique(d$group)) {
 
 
   # Ranges
-  range_sad[[i]] <- tidy(m_sad, effects = "ran_pars") %>% filter(term == "range") %>% mutate(group = i, model = "saduria")
-  range_ben[[i]] <- tidy(m_ben, effects = "ran_pars") %>% filter(term == "range") %>% mutate(group = i, model = "benthos")
+  range_sad[[i]] <- tidy(m_sad, effects = "ran_pars") |> filter(term == "range") |> mutate(group = i, model = "saduria")
+  range_ben[[i]] <- tidy(m_ben, effects = "ran_pars") |> filter(term == "range") |> mutate(group = i, model = "benthos")
 
 
   # Conditional effects: flounder
@@ -261,10 +322,11 @@ for(i in unique(d$group)) {
                            quantile(d$density_saduria_sc, probs = 0.95)),
     flounder_density_sc = seq(quantile(dd$flounder_density_sc, probs = 0.05),
                               quantile(dd$flounder_density_sc, probs = 0.95),
-                              length.out = 50))) %>%
+                              length.out = 50))) |>
     mutate(year = 2020,
            fyear = as.factor(2020),
            fquarter = as.factor(1),
+           pred_length_cm_sc = 0,
            oxygen_sc = 0,
            depth_sc = 0,
            small_cod_density_sc = 0)
@@ -272,8 +334,8 @@ for(i in unique(d$group)) {
   preds_flounder_sad <- predict(m_sad, newdata = nd_flounder, re_form = NA, re_form_iid = NA, se_fit = TRUE)
   preds_flounder_ben <- predict(m_ben, newdata = nd_flounder, re_form = NA, re_form_iid = NA, se_fit = TRUE)
 
-  pred_flounder_sad[[i]] <- preds_flounder_sad %>% mutate(group = i, xvar = "flounder")
-  pred_flounder_ben[[i]] <- preds_flounder_ben %>% mutate(group = i, xvar = "flounder")
+  pred_flounder_sad[[i]] <- preds_flounder_sad |> mutate(group = i, xvar = "flounder")
+  pred_flounder_ben[[i]] <- preds_flounder_ben |> mutate(group = i, xvar = "flounder")
 
   # Conditional effects: cod
   nd_cod <- data.frame(expand_grid(
@@ -281,10 +343,11 @@ for(i in unique(d$group)) {
                            quantile(d$density_saduria_sc, probs = 0.95)),
     small_cod_density_sc = seq(quantile(dd$small_cod_density_sc, probs = 0.05),
                                quantile(dd$small_cod_density_sc, probs = 0.95),
-                               length.out = 50))) %>%
+                               length.out = 50))) |>
     mutate(year = 2020,
            fyear = as.factor(2020),
            fquarter = as.factor(1),
+           pred_length_cm_sc = 0,
            oxygen_sc = 0,
            depth_sc = 0,
            flounder_density_sc = 0) #
@@ -292,24 +355,24 @@ for(i in unique(d$group)) {
   preds_cod_sad <- predict(m_sad, newdata = nd_cod, re_form = NA, re_form_iid = NA, se_fit = TRUE)
   preds_cod_ben <- predict(m_ben, newdata = nd_cod, re_form = NA, re_form_iid = NA, se_fit = TRUE)
 
-  pred_cod_sad[[i]] <- preds_cod_sad %>% mutate(group = i, xvar = "cod")
-  pred_cod_ben[[i]] <- preds_cod_ben %>% mutate(group = i, xvar = "cod")
+  pred_cod_sad[[i]] <- preds_cod_sad |> mutate(group = i, xvar = "cod")
+  pred_cod_ben[[i]] <- preds_cod_ben |> mutate(group = i, xvar = "cod")
 
   # Coefficients
-  coefs_sad <- bind_rows(tidy(m_sad, effects = "fixed", conf.int = TRUE)) %>%
+  coefs_sad <- bind_rows(tidy(m_sad, effects = "fixed", conf.int = TRUE)) |>
     mutate(species = "Cod (m)",
            response = "Saduria",
            sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
            sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
 
-  coefs_ben <- bind_rows(tidy(m_ben, effects = "fixed", conf.int = TRUE)) %>%
+  coefs_ben <- bind_rows(tidy(m_ben, effects = "fixed", conf.int = TRUE)) |>
     mutate(species = "Cod (m)",
            response = "Saduria",
            sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
            sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
 
-  coef_sad[[i]] <- coefs_sad %>% mutate(group = i)
-  coef_ben[[i]] <- coefs_ben %>% mutate(group = i)
+  coef_sad[[i]] <- coefs_sad |> mutate(group = i)
+  coef_ben[[i]] <- coefs_ben |> mutate(group = i)
 
 }
 ```
@@ -325,13 +388,13 @@ for(i in unique(d$group)) {
 
   # Total model
   # NOTE: turning off spatial here due to convergence and AIC
-  m_tot <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+  m_tot <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + pred_length_cm_sc +
                     large_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
                   data = dd,
                   mesh = mesh,
                   family = tweedie(),
-                  spatiotemporal = "IID", 
-                  spatial = "off",
+                  spatiotemporal = "iid", 
+                  spatial = "on",
                   time = "year")
   
   sanity(m_tot)
@@ -345,62 +408,63 @@ for(i in unique(d$group)) {
   res_tot <- dd
   
   # Range
-  range_tot <- tidy(m_tot, effects = "ran_pars") %>% filter(term == "range") %>% mutate(group = "large cod", model = "total")
+  range_tot <- tidy(m_tot, effects = "ran_pars") |> filter(term == "range") |> mutate(group = "large cod", model = "total")
 
   # Spatial and spatiotemporal random effects
-  d_haul <- dd %>% 
+  d_haul <- dd |> 
     distinct(haul_id, .keep_all = TRUE)
   
   preds_tot <- predict(m_tot, newdata = d_haul)
   
   # Coefficients
-  coefs_tot <- bind_rows(tidy(m_tot, effects = "fixed", conf.int = TRUE)) %>% 
+  coefs_tot <- bind_rows(tidy(m_tot, effects = "fixed", conf.int = TRUE)) |> 
     mutate(species = "Cod (m)",
            response = "Saduria",
            sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
            sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
   
-  coefs_tot <- coefs_tot %>% mutate(group = "large cod")
+  coefs_tot <- coefs_tot |> mutate(group = "large cod")
   
   # Conditional effects: flounder
   nd_flounder <- data.frame(expand_grid(
     flounder_density_sc = seq(quantile(dd$flounder_density_sc, probs = 0.05),
                               quantile(dd$flounder_density_sc, probs = 0.95),
-                              length.out = 50))) %>%
+                              length.out = 50))) |>
     mutate(year = 2020,
            fyear = as.factor(2020),
            fquarter = as.factor(1),
+           pred_length_cm_sc = 0,
            oxygen_sc = 0,
            depth_sc = 0,
            large_cod_density_sc = 0)
 
   preds_flounder_tot <- predict(m_tot, newdata = nd_flounder, re_form = NA, re_form_iid = NA, se_fit = TRUE)
-  pred_flounder_tot <- preds_flounder_tot %>% mutate(group = "large cod", xvar = "flounder")
+  pred_flounder_tot <- preds_flounder_tot |> mutate(group = "large cod", xvar = "flounder")
 ```
 
 ## Make dataframes
 
 ```{r make data frame of model output}
-coef_df <- bind_rows(bind_rows(coef_sad) %>% mutate(model = "Saduria"),
-                     bind_rows(coef_ben) %>% mutate(model = "Benthos"))
+coef_df <- bind_rows(bind_rows(coef_sad) |> mutate(model = "Saduria"),
+                     bind_rows(coef_ben) |> mutate(model = "Benthos"))
 
-coef_df <- coef_df %>% bind_rows(coefs_tot %>% mutate(model = "Total"))
+coef_df <- coef_df |> bind_rows(coefs_tot |> mutate(model = "Total"))
 
-pred_cod_df <- bind_rows(bind_rows(pred_cod_sad) %>% mutate(model = "Saduria"),
-                         bind_rows(pred_cod_ben) %>% mutate(model = "Benthos"))
+pred_cod_df <- bind_rows(bind_rows(pred_cod_sad) |> mutate(model = "Saduria"),
+                         bind_rows(pred_cod_ben) |> mutate(model = "Benthos"))
 
-pred_flounder_df <- bind_rows(bind_rows(pred_flounder_sad) %>% mutate(model = "Saduria"),
-                              bind_rows(pred_flounder_ben) %>% mutate(model = "Benthos"))
+pred_flounder_df <- bind_rows(bind_rows(pred_flounder_sad) |> mutate(model = "Saduria"),
+                              bind_rows(pred_flounder_ben) |> mutate(model = "Benthos"))
 
-res_df <- bind_rows(bind_rows(res_sad) %>% mutate(model = "Saduria"),
-                    bind_rows(res_ben) %>% mutate(model = "Benthos"))
+res_df <- bind_rows(bind_rows(res_sad) |> mutate(model = "Saduria"),
+                    bind_rows(res_ben) |> mutate(model = "Benthos"))
 
-res_df <- res_df %>% bind_rows(res_tot %>% mutate(model = "Total"))
+res_df <- res_df |> bind_rows(res_tot |> mutate(model = "Total"))
 
-random_df <- bind_rows(bind_rows(random_sad) %>% mutate(model = "Saduria"),
-                       bind_rows(random_ben) %>% mutate(model = "Benthos"))
+random_df <- bind_rows(bind_rows(random_sad) |> mutate(model = "Saduria"),
+                       bind_rows(random_ben) |> mutate(model = "Benthos"))
 
-random_df <- random_df %>% bind_rows(preds_tot %>% mutate(model = "Total"))
+random_df <- random_df |> bind_rows(preds_tot |> mutate(model = "Total"))
 
 range_df <- bind_rows(range_tot, bind_rows(range_ben), bind_rows(range_sad))
 ```
@@ -408,12 +472,12 @@ range_df <- bind_rows(range_tot, bind_rows(range_ben), bind_rows(range_sad))
 ## Plot spatial random effects
 
 ```{r spatial plots}
-random_df <- random_df %>%
+random_df <- random_df |>
   mutate(group = str_to_sentence(group))
 
 # Saduria
 plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Saduria"),
+  geom_point(data = random_df |> filter(model == "Saduria"),
              aes(X*1000, Y*1000, color = omega_s), size = 0.9) +
   scale_color_gradient2() +
   facet_wrap(~factor(group, levels = c("Flounder", "Small cod", "Large cod"))) +
@@ -429,7 +493,7 @@ ggsave(paste0(home, "/figures/supp/omega_sad.pdf"), width = 17, height = 9, unit
 
 # Now do benthos (only for flounder)
 plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Flounder"),
+  geom_point(data = random_df |> filter(model == "Benthos" & group == "Flounder"),
              aes(X*1000, Y*1000, color = omega_s), size = 0.9) +
   scale_color_gradient2() +
   facet_wrap(~ group) +
@@ -450,7 +514,7 @@ ggsave(paste0(home, "/figures/supp/omega_ben.pdf"), width = 11, height = 11, uni
 
 # Saduria
 sad_eps_sc <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Saduria" & group == "Small cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+  geom_point(data = random_df |> filter(model == "Saduria" & group == "Small cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
   scale_color_gradient2() +
   facet_wrap(~year) +
   labs(color = "Spatiotemporal\nrandom effect") +
@@ -462,7 +526,7 @@ sad_eps_sc
 ggsave(paste0(home, "/figures/supp/epsilon_sad_small_cod.pdf"), width = 17, height = 17, units = "cm")
 
 sad_eps_lc <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Saduria" & group == "Large cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+  geom_point(data = random_df |> filter(model == "Saduria" & group == "Large cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
   scale_color_gradient2() +
   facet_wrap(~ year) +
   labs(color = "Spatiotemporal\nrandom effect") +
@@ -474,7 +538,7 @@ sad_eps_lc
 ggsave(paste0(home, "/figures/supp/epsilon_sad_large_cod.pdf"), width = 17, height = 17, units = "cm")
 
 sad_eps_f <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Saduria" & group == "Flounder"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+  geom_point(data = random_df |> filter(model == "Saduria" & group == "Flounder"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
   scale_color_gradient2() +
   facet_wrap(~ year) +
   labs(color = "Spatiotemporal\nrandom effect") +
@@ -488,7 +552,7 @@ ggsave(paste0(home, "/figures/supp/epsilon_sad_flounder.pdf"), width = 17, heigh
 
 # Benthos
 ben_eps_sc <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Small cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+  geom_point(data = random_df |> filter(model == "Benthos" & group == "Small cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
   scale_color_gradient2() +
   facet_wrap(~ year) +
   labs(color = "Spatiotemporal\nrandom effect") +
@@ -500,7 +564,7 @@ ben_eps_sc
 ggsave(paste0(home, "/figures/supp/epsilon_ben_small_cod.pdf"), width = 17, height = 17, units = "cm")
 
 ben_eps_lc <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Large cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+  geom_point(data = random_df |> filter(model == "Benthos" & group == "Large cod"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
   scale_color_gradient2() +
   facet_wrap(~ year) +
   labs(color = "Spatiotemporal\nrandom effect") +
@@ -512,7 +576,7 @@ ben_eps_lc
 ggsave(paste0(home, "/figures/supp/epsilon_ben_large_cod.pdf"), width = 17, height = 17, units = "cm")
 
 ben_eps_f <- plot_map_fc +
-  geom_point(data = random_df %>% filter(model == "Benthos" & group == "Flounder"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
+  geom_point(data = random_df |> filter(model == "Benthos" & group == "Flounder"), aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
   scale_color_gradient2() +
   facet_wrap(~ year) +
   labs(color = "Spatiotemporal\nrandom effect") +
@@ -525,8 +589,8 @@ ggsave(paste0(home, "/figures/supp/epsilon_ben_flounder.pdf"), width = 17, heigh
 
 
 # Total
-tot_eps <- plot_map_fc + 
-    geom_point(data = preds_tot, aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) + 
+tot_eps <- plot_map_fc +
+    geom_point(data = preds_tot, aes(X*1000, Y*1000, color = epsilon_st), size = 0.9) +
     scale_color_gradient2() +
     facet_wrap(~ year) +
     labs(color = "Spatiotemporal\nrandom effect") +
@@ -542,13 +606,13 @@ tot_eps
 #pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
 pal <- (brewer.pal(n = 11, name = "RdYlBu")[c(11, 4, 1)])
 
-range_df %>% arrange(estimate)
+range_df |> arrange(estimate)
 
-range_df %>% 
+range_df |> 
   mutate(group = str_to_sentence(group),
          model2 = ifelse(model == "benthos", "Benthic prey", model),
          model2 = ifelse(model == "saduria", "Saduria", model2),
-         model2 = ifelse(model == "total", "Total prey", model2)) %>% 
+         model2 = ifelse(model == "total", "Total prey", model2)) |> 
   ggplot(aes(model2, estimate, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) + 
   geom_point(size = 2) +
   geom_hline(yintercept = 5, linetype = 2, alpha = 0.5) +
@@ -564,8 +628,8 @@ ggsave(paste0(home, "/figures/supp/ranges.pdf"), width = 11, height = 11, units 
 
 ```{r plot residuals}
 # Plot residuals
-res_df %>% 
-  mutate(group = str_to_title(group)) %>% 
+res_df |> 
+  mutate(group = str_to_title(group)) |> 
   ggplot(aes(sample = res)) +
   stat_qq(size = 0.75, shape = 21, fill = NA) +
   facet_grid(model ~ group) +
@@ -579,12 +643,12 @@ ggsave(paste0(home, "/figures/supp/qq_relative_prey_weight.pdf"), width = 17, he
 ## Plot coefficients
 
 ```{r plot coeffficients}
-coef_df$term %>% unique()
+coef_df$term |> unique()
 
 # Fix some names
-coef_df2 <- coef_df %>%
-  filter(!grepl('year', term)) %>%
-  filter(!grepl('quarter', term)) %>%
+coef_df2 <- coef_df |>
+  filter(!grepl('year', term)) |>
+  filter(!grepl('quarter', term)) |>
   mutate(term = str_remove_all(term, "_sc"),
          term = str_remove_all(term, "density"),
          term = str_replace_all(term, "_", ""),
@@ -592,15 +656,16 @@ coef_df2 <- coef_df %>%
          term = str_replace_all(term, "llco", "ll co"),
          term = str_replace(term, ":", " × "),
          term = str_to_sentence(term),
-         group = str_to_sentence(group)) %>% 
+         group = str_to_sentence(group)) |> 
   mutate(model2 = ifelse(model == "Saduria", "Prey=Saduria", NA),
          model2 = ifelse(model == "Benthos", "Prey=Benthic prey", model2),
-         model2 = ifelse(model == "Total", "Prey=Total prey", model2)) %>% 
-  mutate(sig2 = ifelse(sig == "Y", "N", "Y"))
+         model2 = ifelse(model == "Total", "Prey=Total prey", model2)) |> 
+  mutate(sig2 = ifelse(sig == "Y", "N", "Y")) |> 
+  mutate(term = ifelse(term == "Predlengthcm", "Predator length", term))
 
 p1 <- 
-  coef_df2 %>% 
-  filter(model == "Benthos") %>% 
+  coef_df2 |> 
+  filter(model == "Benthos") |> 
   ggplot(aes(estimate, term, alpha = sig2,
                  color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
   geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
@@ -621,8 +686,8 @@ p1 <-
   NULL
 
 p2 <- 
-  coef_df2 %>% 
-  filter(model == "Saduria") %>% 
+  coef_df2 |> 
+  filter(model == "Saduria") |> 
   ggplot(aes(estimate, term, alpha = sig2,
                  color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
   geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
@@ -638,8 +703,8 @@ p2 <-
          alpha = "none")
 
 p3 <- 
-  coef_df2 %>% 
-  filter(model == "Total") %>% 
+  coef_df2 |> 
+  filter(model == "Total") |> 
   ggplot(aes(estimate, term, alpha = sig2,
                  color = "Large cod")) +
   geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
@@ -669,8 +734,8 @@ ggsave(paste0(home, "/figures/coefs.pdf"), width = 11, height = 22, units = "cm"
 #| fig-height: 8
 
 # Fix some names
-coef_df3 <- coef_df %>%
-  filter(grepl('year', term)) %>%
+coef_df3 <- coef_df |>
+  filter(grepl('year', term)) |>
   mutate(term = str_remove_all(term, "fyear"),
          group = str_to_sentence(group),
          term = as.numeric(term),
@@ -703,12 +768,12 @@ ggsave(paste0(home, "/figures/supp/coefs_year.pdf"), width = 11, height = 21, un
 
 ```{r quarter effect}
 # Now do quarter
-coef_df5 <- coef_df %>%
-  filter(term %in% c("fquarter4")) %>% 
+coef_df5 <- coef_df |>
+  filter(term %in% c("fquarter4")) |> 
   mutate(group = str_to_sentence(group),
          model2 = ifelse(model == "Benthos", "Benthic prey", model),
          model2 = ifelse(model == "Saduria", "Saduria", model2),
-         model2 = ifelse(model == "Total", "Total prey", model2)) %>% 
+         model2 = ifelse(model == "Total", "Total prey", model2)) |> 
   mutate(sig2 = ifelse(sig == "Y", "N", "Y"))
 
 ggplot(coef_df5, aes(estimate, model2,
@@ -739,20 +804,20 @@ ggsave(paste0(home, "/figures/supp/coefs_quarter.pdf"), width = 17, height = 11,
 ```{r plot conditional effects}
 # Which CI?
 # https://www.calculator.net/confidence-interval-calculator.html
-pred_df <- bind_rows(pred_cod_df, pred_flounder_df) %>%
+pred_df <- bind_rows(pred_cod_df, pred_flounder_df) |>
   mutate(group = str_to_sentence(group),
          sad = ifelse(density_saduria_sc == min(density_saduria_sc), "Low", NA),
-         sad = ifelse(density_saduria_sc == max(density_saduria_sc), "High", sad)) %>% 
+         sad = ifelse(density_saduria_sc == max(density_saduria_sc), "High", sad)) |> 
   drop_na(sad)
 
 pred_df2 <- bind_rows(pred_flounder_df,
-                      pred_flounder_tot %>% mutate(model = "Total")) %>% 
+                      pred_flounder_tot |> mutate(model = "Total")) |> 
   mutate(group = str_to_sentence(group),
          density_saduria_sc = replace_na(density_saduria_sc,
                                          median(density_saduria_sc, na.rm = TRUE)))
 
 # 75% CI!!
-ggplot(pred_df %>% filter(model == "Saduria" & xvar == "flounder"),# & !group == "Large cod"),
+ggplot(pred_df |> filter(model == "Saduria" & xvar == "flounder"),# & !group == "Large cod"),
        aes(flounder_density_sc, exp(est), color = sad, fill = sad)) +
   geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
               alpha = 0.3, color = NA) +
@@ -790,21 +855,21 @@ Showing conditional effects of oxygen on small cod feeding on benthos
                   data = dd,
                   mesh = mesh,
                   family = tweedie(),
-                  spatiotemporal = "IID",
+                  spatiotemporal = "iid",
                   spatial = "off",
                   time = "year")
 
   sanity(m_ben)
 
   nd <- data.frame(oxygen = seq(quantile(d$oxygen, probs = 0.05), quantile(d$oxygen, probs = 0.95),
-                                length.out = 50)) %>%
+                                length.out = 50)) |>
     mutate(year = 2020,
            fyear = as.factor(2020),
            fquarter = as.factor(1),
            density_saduria_sc = 0,
            flounder_density_sc = 0,
            depth_sc = 0,
-           small_cod_density_sc = 0) %>%
+           small_cod_density_sc = 0) |>
     mutate(oxygen_sc = (oxygen - mean(d$oxygen)) / sd(d$oxygen))
 
 

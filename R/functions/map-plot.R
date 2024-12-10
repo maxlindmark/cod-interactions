@@ -8,6 +8,10 @@ theme_set(theme_sleek())
 
 sf::sf_use_s2(FALSE)
 
+# Load shapefile
+shape <- st_read(paste0(home, "/data/shapefiles/ICES-StatRec-mapto-ICES-Areas/StatRec_map_Areas_Full_20170124.shp")) |> 
+  filter(Area_27 %in% c("3.a.20", "3.a.21", "3.c.22", "3.d.24", "3.d.25", "3.d.26", "3.d.27", "3.d.28.1", "3.d.28.2", "3.d.29", "3.d.30"))
+
 # Specify map ranges
 ymin = 52; ymax = 60.75; xmin = 10; xmax = 24
 
@@ -50,6 +54,7 @@ yrange <- ymax2 - ymin2
 
 plot_map <- 
   ggplot(swe_coast_proj) + 
+  geom_sf(data = shape, aes(group = ICESNAME), fill = NA, alpha = 0.1, color = "grey85") + 
   xlim(xmin2, xmax2) +
   ylim(ymin2, ymax2) +
   labs(x = "Longitude", y = "Latitude") +
@@ -58,7 +63,6 @@ plot_map <-
   guides(colour = guide_colorbar(title.position = "top", title.hjust = 0.5),
          fill = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
   NULL
-
 
 plot_map_fc <- 
   ggplot(swe_coast_proj) + 

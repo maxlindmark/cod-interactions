@@ -1,0 +1,177 @@
+---
+title: "Summarise stomach content data"
+author: "Max Lindmark"
+date: today
+date-format: iso
+toc: true
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 100%
+editor: source
+---
+
+## Description
+This script reads in the data used for the competition paper, and appends data for 2023, for the CINEA paper (https://github.com/maxlindmark/pred-prey-overlap)
+
+## Load packages
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries
+library(tidyverse)
+library(tidync)
+library(tidyterra)
+library(RCurl)
+library(janitor)
+library(terra)
+library(viridis)
+library(devtools)
+library(ncdf4)
+library(tidylog)
+library(raster)
+
+# Source code for map plots
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+#source("R/functions/map-plot.R")
+
+home <- here::here()
+```
+
+## Read data
+
+```{r read data}
+#| warning: false
+
+d <- read_csv(paste0(home, "/data/clean/full_stomach_data.csv"))
+names(d)
+d %>% as.data.frame() %>% tail(50)
+```
+
+## Here I will read the 2023 data and prepare like the other data in 01_collate_stomach_data.qmd
+
+```{r}
+bits_2023_q1_cod_pred <- readxl::read_xlsx(paste0(home, "/data/stomach-data/BITS/stomach/database 2024_ICES_part 1.xlsx"), sheet = 13) %>% 
+  clean_names()
+
+bits_2023_q1_cod_prey <- readxl::read_xlsx(paste0(home, "/data/stomach-data/BITS/stomach/database 2024_ICES_part 1.xlsx"), sheet = 14) %>% 
+  clean_names()
+
+stom_23 <- bits_2023_q1_cod_prey %>%
+  left_join(bits_2023_q1_cod_pred %>% dplyr::select(-record_type, 
+                                                    -ship, 
+                                                    -gear, 
+                                                    -haul_no,
+                                                    -station_number, 
+                                                    -year, 
+                                                    -month,
+                                                    -day,
+                                                    -time,
+                                                    -aphia_id_predator,
+                                                    -length,
+                                                    -notes,
+                                                    -gall_bladder)) %>% 
+  rename(hn = haul_no,
+         prey_weight_g = weight,
+         pred_length_cm = length,
+         pred_weight_g = ind_wgt,
+         prey_latin_name = prey,
+         prey_nr = count) %>% 
+  mutate(predator_code = "COD",
+         pred_length_cm = pred_length_cm/10,
+         quarter = 1,
+         pred_id = paste(year, quarter, predator_code, fish_id),
+         prey_nr = replace_na(prey_nr, 1),
+         prey_nr = as.integer(prey_nr),
+         prey_weight_g = prey_weight_g / prey_nr,
+         prey_number_type = ifelse(prey_nr > 1, "un_aggregated_from_average", "unique_id"),
+         prey_weight_type = ifelse(prey_number_type == "un_aggregated_from_average", "pooled", "unique_id"),
+         regurgitated = replace_na(regurgitated, 0),
+         haul_id = paste(year, quarter, hn, sep = "_")) %>%
+  filter(regurgitated == 0) %>% 
+  uncount(prey_nr) %>% 
+  filter(!is.na(prey_weight_g)) %>% # can't use this
+  filter(!is.na(prey_latin_name)) # can't use this
+
+# Add on trawl data
+bits_2023_q1_trawl <- read_delim(paste0(home, "/data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L).csv"), delim = ";") %>% 
+  clean_names() %>% 
+  filter(quarter == 1)
+
+# For these coordinates, we can use the function Fede provided:
+format.position <- function(x){
+  sign.x <- sign(x)
+  x <- abs(x)
+  x <- ifelse(nchar(x)==3, paste("0",x,sep=""), x)
+  x <- ifelse(nchar(x)==2, paste("00",x,sep=""), x)
+  x <- ifelse(nchar(x)==1, paste("000",x,sep=""), x)
+  dec.x <- as.numeric(paste(substring(x,1,2)))+as.numeric(paste(substring(x,3,4)))/60
+  dec.x <- sign.x*dec.x
+}
+
+# Apply function
+bits_2023_q1_trawl$lat <- format.position(bits_2023_q1_trawl$lat)
+bits_2023_q1_trawl$lon <- format.position(bits_2023_q1_trawl$long)
+
+bits_2023_q1_trawl <- sdmTMB::add_utm_columns(bits_2023_q1_trawl, ll_names = c("lon", "lat"))
+
+# Go ahead
+bits_2023_q1_trawl$haul_id <- paste(bits_2023_q1_trawl$year,
+                                    bits_2023_q1_trawl$quarter,
+                                    bits_2023_q1_trawl$haul,
+                                    sep = "_")
+
+# Should be a unique ID per length
+bits_2023_q1_trawl %>% 
+  group_by(haul_id, lengthcl) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  distinct(n)
+
+bits_2023_q1_trawl <- bits_2023_q1_trawl %>%
+  distinct(haul_id, .keep_all = TRUE) %>% 
+  dplyr::select(haul_id, lon, lat, X, Y, date)
+  
+# Join with stomach!
+stom_23 <- stom_23 %>% left_join(bits_2023_q1_trawl)
+
+# Add in ICES sub-divisions
+shape <- shapefile(paste0(home, "/data/ICES-StatRec-mapto-ICES-Areas/StatRec_map_Areas_Full_20170124.shp"))
+
+pts <- SpatialPoints(cbind(stom_23$lon, stom_23$lat), 
+                     proj4string = CRS(proj4string(shape)))
+
+stom_23$subdiv <- over(pts, shape)$Area_27
+
+# Rename subdivisions to the more common names and do some more filtering (by sub div and area)
+sort(unique(stom_23$subdiv))
+
+stom_23 <- stom_23 %>% 
+  mutate(subdiv = factor(subdiv),
+         subdiv = fct_recode(subdiv,
+                         "24" = "3.d.24",
+                         "25" = "3.d.25",
+                         "26" = "3.d.26",
+                         "27" = "3.d.27",
+                         "28" = "3.d.28.2")) %>% 
+  mutate(subdiv = as.numeric(as.character(subdiv)))
+
+# Combine with earlier data
+com_col <- intersect(names(stom_23), names(d))
+
+stom_23 <- stom_23 %>% dplyr::select(all_of(com_col))
+
+d <- bind_rows(stom_23 |> 
+                 mutate(gall_bladder = as.character(gall_bladder)),
+               d)
+```
+
+```{r save}
+write_csv(d, paste0(home, "/data/clean/full_stomach_data_x.csv"))
+```

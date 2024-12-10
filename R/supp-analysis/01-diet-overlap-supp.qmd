@@ -1,0 +1,709 @@
+---
+title: "Diet (dis)-similarity"
+author: "Max Lindmark"
+date: today
+date-format: iso
+toc: true
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 100%
+editor: source
+---
+
+## Load packages
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+home <- here::here()
+
+# Load libraries
+library(tidyverse)
+library(tidylog)
+library(RCurl)
+library(gllvm)
+library(RColorBrewer)
+library(ggrepel)
+library(vegan)
+library(patchwork)
+library(RCurl)
+library(devtools)
+library(ggpubr)
+library(janitor)
+library(brms)
+library(modelr)
+library(tidybayes)
+library(ggstats)
+library(broom)
+library(broom.mixed)
+
+# Source map-plot
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+#source(paste0(home, "R/functions/map-plot.R"))
+
+# Source code for rotating ordination plot (to make it work in ggplot)
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/rotate.R")
+#source(paste0(home, "R/functions/rotate.R"))
+```
+
+## Read data
+
+```{r read data}
+#| warning: false
+d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
+```
+
+# Species accumulation curves
+
+```{r}
+d2 <- d |>
+  dplyr::select(ends_with("_tot"))
+
+d2$pred_id <- d$pred_id
+
+d2 <- d2 |>
+  left_join(d |> dplyr::select(pred_length_cm, pred_weight_g, pred_id, species, year, quarter, ices_rect), by = "pred_id") |> 
+  mutate(group = "Flounder",
+         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+  mutate(id = paste(year, quarter, ices_rect, group, sep = "_"))
+
+d2 |>
+  filter(group == "Flounder") |> 
+  filter(pred_length_cm < 10) |> 
+  as.data.frame()
+```
+
+# Calculate species accumulation curves by group
+Group here is combination of year, quarter, ices_rect, group
+
+```{r}
+# Loop through species accumulation curves by each ID for IDs with more than 30 predator IDs
+d3 <- d2 |> 
+  mutate(n = length(unique(pred_id)), .by = id) |> 
+  filter(n > 30)
+
+cd <- list()
+
+for(i in unique(d3$id)){
+
+  dd <- d3 |>
+    filter(id == i) |> 
+    dplyr::select(ends_with("tot")) %>%
+    vegan::poolaccum(.)  
+  
+  obs <- data.frame(summary(dd)$S, check.names = FALSE)
+  colnames(obs) <- c("N", "S", "lower2.5", "higher97.5", "std")
+  
+  cd[[i]] <- obs |> mutate(id = i)
+
+}
+
+cm <- bind_rows(cd) |> 
+  separate(id, sep = "_", into = c("year", "quarter", "ices_rect", "group"), remove = FALSE)
+
+mlc <- lm(S ~ 0 + group*log(N), data = cm)
+
+library(glmmTMB)
+mlc_glmm <- glmmTMB(S ~ group*log(N) + (1 + log(N) | id),
+               data = cm)
+
+nd <- cm |>
+  group_by(group) |> 
+  data_grid(N = seq_range(N, by = 1)) |> 
+  ungroup() |>
+  mutate(group = group)
+  
+pred <- predict(mlc_glmm, newdata = nd, se.fit = TRUE,
+                type = "response", re.form = NA)
+
+nd$pred <- pred$fit
+nd$upr <- pred$fit + pred$se.fit*1.96
+nd$lwr <- pred$fit - pred$se.fit*1.96
+
+# How many prey groups (filter those that make up > 1%)
+common_prey <- d |> 
+  pivot_longer(ends_with("_tot")) |> 
+  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  mutate(group = "Flounder",
+         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+  summarise(sum_sp = sum(value), .by = c(group, name)) |> 
+  mutate(sum = sum(sum_sp), .by = group) |> 
+  mutate(perc = (sum_sp / sum) * 100) |> 
+  filter(perc >= 5) |> 
+  summarise(N = length(unique(name)), .by = group)
+  
+# Average number of predator IDs?
+avg_pred <- d2 |> 
+  pivot_longer(ends_with("_tot")) |> 
+  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  mutate(group = "Flounder",
+         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+  mutate(id = paste(year, quarter, ices_rect, group, sep = "_"))
+
+unique(avg_pred$id)
+
+p1 <- avg_pred |>
+  summarise(n = length(unique(pred_id)), .by = id) |>
+  separate(id, into = c("year", "quarter", "ices_rect", "group"), sep = "_") |> 
+  ggplot(aes(n)) +
+  facet_wrap(~group, ncol = 1) + 
+  labs(x = "Count",
+       y = "Number of predators per spatiotemporal unit") +
+  geom_histogram(alpha = 0.8, fill = "steelblue") +
+  coord_cartesian(expand = 0)
+
+avg_pred2 <- avg_pred |> 
+  summarise(n = length(unique(pred_id)), .by = id) |>
+  separate(id, into = c("year", "quarter", "ices_rect", "group"), sep = "_") |> 
+  summarise(mean_n = mean(n), .by = group)
+
+p2 <- cm |>
+  ggplot(aes(x = N, y = S, group = id)) +
+  geom_line(alpha = 0.2) +
+  geom_hline(data = common_prey, aes(yintercept = N), color = "steelblue", linetype = 2, linewidth = 0.8) +
+  geom_vline(data = avg_pred2, aes(xintercept = mean_n), color = "steelblue", linetype = 2, linewidth = 0.8) +
+  geom_ribbon(data = nd, aes(N, pred, ymin = lwr, ymax = upr),
+              fill = "tomato3", inherit.aes = FALSE, linewidth = 0.5, alpha = 0.3) +
+  geom_line(data = nd, aes(N, pred), color = "tomato3", inherit.aes = FALSE, linetype = 2, linewidth = 0.8) +
+  facet_wrap(~group, scales = "free", ncol = 1) +
+  labs(y = "Number fo prey groups",
+       x = "Number of predators") +
+  coord_cartesian(xlim = c(3, 50), expand = 0) +
+  NULL
+
+(p1 | p2) + plot_annotation(tag_levels = "a")
+
+ggsave(paste0(home, "/figures/supp/species_accumulation.pdf"), width = 17, height = 14, units = "cm")
+```
+
+# Schoener's overlap index
+
+```{r}
+# Calculate relative prey weight and average by size-class
+d2 <- d |>
+  dplyr::select(ends_with("_tot"))
+
+d2$pred_id <- d$pred_id
+
+d2 <- d2 |>
+  left_join(d |> dplyr::select(pred_length_cm, pred_weight_g, pred_id, species), by = "pred_id")
+
+qyear_rect_sum <- d2 |> 
+  pivot_longer(ends_with("_tot")) |> 
+  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
+  mutate(group = "Flounder",
+         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+  group_by(year, quarter, ices_rect, group) |>
+  summarise(n = length(unique(pred_id)),
+            tot_prey = sum(value)) |> 
+  ungroup() |> 
+  group_by(year, quarter, ices_rect) |> 
+  mutate(min_stom = min(n)) |> 
+  ungroup() |>
+  mutate(id = paste(year, quarter, ices_rect, group, sep = "_")) |> 
+  dplyr::select(-year, -quarter, -ices_rect, -group) |> 
+  #filter(n > 3)
+  filter(n > 15) # Even this high value gives similar results even though it results in much smaller sample sizes
+
+# year_rect_sum |> arrange(n) |> as.data.frame()
+# year_rect_sum |> arrange(min_stom) |> as.data.frame()
+# summary(year_rect_sum$n)
+
+diet_prop <- d2 |> 
+  pivot_longer(ends_with("_tot")) |> 
+  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
+  mutate(group = "Flounder",
+         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+  group_by(year, quarter, ices_rect, group, name) |>
+  summarise(tot_prey_by_grp = sum(value)) |> 
+  ungroup() |>
+  mutate(id = paste(year, quarter, ices_rect, group, sep = "_")) |> 
+  filter(id %in% unique(qyear_rect_sum$id)) |> 
+  left_join(qyear_rect_sum, by = "id") |> 
+  mutate(prop_prey = tot_prey_by_grp / tot_prey)
+  
+# Calculate overlap by year and ices rect and species group. Make the proportions wide!
+#unique(diet_prop$group)
+diet_prop_wide <- diet_prop |> 
+  dplyr::select(-tot_prey_by_grp, -tot_prey, -id, -n) |> 
+  pivot_wider(names_from = group, values_from = prop_prey) |> 
+  mutate(abs_f_sc = abs(Flounder - `Small cod`),
+         abs_f_lc = abs(Flounder - `Large cod`),
+         abs_lc_sc = abs(`Large cod` - `Small cod`)) |> 
+  group_by(year, quarter, ices_rect) |> 
+  summarise(`Flounder\nSmall cod` = 1 - 0.5*sum(abs_f_sc),
+            `Flounder\nLarge cod` = 1 - 0.5*sum(abs_f_lc),
+            `Small cod\nLarge cod` = 1 - 0.5*sum(abs_lc_sc))
+    
+diet_prop_wide$latitude <- mapplots::ices.rect(diet_prop_wide$ices_rect)$lat
+diet_prop_wide$longitude <- mapplots::ices.rect(diet_prop_wide$ices_rect)$lon
+
+diet_prop_wide <- sdmTMB::add_utm_columns(diet_prop_wide)
+
+ovr <- diet_prop_wide |>
+  pivot_longer(c(`Flounder\nSmall cod`, `Flounder\nLarge cod`, `Small cod\nLarge cod`),
+               names_to = "overlap_group", values_to = "overlap") |> 
+  drop_na(overlap)
+
+summary(ovr$overlap)
+```
+
+## How does the diet overlap relate to biomass density of the species?
+Trawl data
+
+```{r}
+## Read in trawl data. There's one file for cod and one for flounder
+# They go up to 2020 Q1
+# trawl_surveys_cod <- read.csv("data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L) COD.csv", sep = ";")
+# trawl_surveys_fle <- read.csv("data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L) FLE.csv", sep = ";")
+
+trawl_surveys_cod <- read_delim(paste0(home, "/data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L) COD.csv"), delim = ";")
+trawl_surveys_fle <- read_delim(paste0(home, "/data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L) FLE.csv"), delim = ";")
+
+# Combine for the two species, filter and clean!
+trawl_data <- rbind(trawl_surveys_cod, trawl_surveys_fle) |>
+  clean_names() |>
+  mutate(swept_area = as.numeric(gsub(",", "\\.", swept_area)),
+         kg_hour = as.numeric(gsub(",", "\\.", kg_hour)),
+         dist = as.numeric(gsub(",", "\\.", dist))) |> 
+  as.data.frame()
+
+str(trawl_data)
+
+sort(unique(trawl_data$lat)) |> head(20)
+
+# For these coordinates, we can use the function Fede provided:
+format.position <- function(x){
+  sign.x <- sign(x)
+  x <- abs(x)
+  x <- ifelse(nchar(x)==3, paste("0",x,sep=""), x)
+  x <- ifelse(nchar(x)==2, paste("00",x,sep=""), x)
+  x <- ifelse(nchar(x)==1, paste("000",x,sep=""), x)
+  dec.x <- as.numeric(paste(substring(x,1,2)))+as.numeric(paste(substring(x,3,4)))/60
+  dec.x <- sign.x*dec.x
+}
+
+# Apply function
+trawl_data$lat <- format.position(trawl_data$lat)
+trawl_data$lon <- format.position(trawl_data$long)
+
+trawl_data <- sdmTMB::add_utm_columns(trawl_data, ll_names = c("lon", "lat"))
+
+# SMHI serial no?
+t <- trawl_data |> drop_na(smhi_serial_no)
+
+plot_map + 
+  geom_point(data = trawl_data, aes(X*1000, Y*1000, color = factor(year)),
+             alpha = 0.5, size = 0.3) +
+  theme_sleek(base_size = 8)
+```
+
+Read and join the biologial data 
+
+```{r}
+trawl_surveys_s_cod <- read_delim(paste0(home, "/data/stomach-data/BITS/biological/Trawl Surveys (S) COD.csv"), delim = ";")
+trawl_surveys_s_flounder <- read_delim(paste0(home, "/data/stomach-data/BITS/biological/Trawl Surveys (S) FLE.csv"), delim = ";")
+
+trawl_surveys_s_cod$Species <- "Cod"
+trawl_surveys_s_flounder$Species <- "Flounder"
+
+bio_data <- bind_rows(trawl_surveys_s_cod, trawl_surveys_s_flounder) |>
+  clean_names()
+
+# Join the trawl, bio and stomach data. First create a unique ID.
+# In earlier versions I had a column called otolith number (fish ID!), which was really fish id, but it isn't here anymore.
+
+# Add a new species code in the trawl data that matches the stomach data 
+trawl_data <- trawl_data |> mutate(predator_code = ifelse(species == "cod", "COD", "FLE"))
+
+bio_data <- bio_data |> mutate(predator_code = ifelse(species == "Cod", "COD", "FLE"))
+
+unique(is.na(trawl_data[, c("year", "quarter", "haul")]))
+
+# Go ahead
+trawl_data$haul_id <- paste(trawl_data$year,
+                            trawl_data$quarter,
+                            trawl_data$haul,
+                            sep = "_")
+
+# Should be a unique ID per length and predator code
+trawl_data |> 
+  group_by(haul_id, lengthcl, predator_code) |> 
+  mutate(n = n()) |> 
+  ungroup() |> 
+  distinct(n)
+
+# Now we want the cpue of a species-size combination as a column, then make it distinct per haul
+trawl_data_unique_haul <- trawl_data |> 
+  dplyr::select(-species, -lengthcl, -predator_code, -kg_hour, -tot_no_hour, -no_hour, -length_measure_type, -sex, -long) |> # Remove any column that has anything to do with catch, because that info should come from the species dataframes below. I.e., after left_joining this and the catch data, any 0 zero catches should be NA in the joined data
+  distinct(haul_id, .keep_all = TRUE)
+
+trawl_data_cod <- trawl_data |> 
+  filter(!validity == "I") |> 
+  filter(predator_code == "COD") |> 
+  mutate(kg = kg_hour * (duration / 60),
+         kg_km2 = kg / swept_area) |> # make it biomass density
+  drop_na(kg_km2) |> 
+  mutate(size_group = ifelse(lengthcl >= 100 & lengthcl < 250, "small", NA),
+         size_group = ifelse(lengthcl >= 250 & lengthcl < 500, "medium", size_group)) |> 
+  group_by(haul_id, size_group) |> 
+  summarise(kg_km2 = sum(kg_km2)) |> 
+  filter(size_group %in% c("small", "medium")) |> 
+  pivot_wider(names_from = size_group, values_from = kg_km2) |> 
+  rename(mcod_kg_km2 = medium,
+         scod_kg_km2 = small) |> 
+  mutate(mcod_kg_km2 = replace_na(mcod_kg_km2, 0),
+         scod_kg_km2 = replace_na(scod_kg_km2, 0))
+
+# Ok, so because this is catches (no hauls with no fish... the only reason I have 0 catches is if one of the size-groups doesn't have a catch!)
+
+# Check with a haul_id
+trawl_data |> 
+  filter(predator_code == "COD" & haul_id == "2015_1_20") 
+
+trawl_data_cod
+
+# Now do the same for flounder and join with the cod data, then with haul data!
+# Different code because we do not need to worry about size
+trawl_data_fle <- trawl_data |> 
+  filter(!validity == "I") |> 
+  filter(predator_code == "FLE") |> 
+  mutate(kg = kg_hour * (duration / 60),
+         kg_km2 = kg / swept_area) |> # make it biomass density
+  #drop_na(kg_km2) |> 
+  mutate(size_group = ifelse(lengthcl >= 100, "benthic", "all")) |> 
+  group_by(haul_id, size_group) |> 
+  summarise(fle_kg_km2 = sum(kg_km2)) |> 
+  filter(size_group == "benthic")
+
+
+# Add back summaries to dataframe of unique hauls
+trawl_data_unique_haul <- trawl_data_unique_haul |> filter(!validity == "I")
+
+trawl_data_wide <- left_join(trawl_data_unique_haul, trawl_data_cod, by = "haul_id")
+trawl_data_wide <- left_join(trawl_data_wide, trawl_data_fle, by = "haul_id")
+
+# Change the NA's to 0's... 
+trawl_data_wide <- trawl_data_wide |> 
+  mutate(scod_kg_km2 = replace_na(scod_kg_km2, 0),
+         mcod_kg_km2 = replace_na(mcod_kg_km2, 0),
+         fle_kg_km2 = replace_na(fle_kg_km2, 0))
+
+# Now add in the same ID in the bio_data
+unique(is.na(bio_data[, c("year", "quarter", "haul")]))
+
+# Go ahead
+bio_data$haul_id <- paste(bio_data$year,
+                          bio_data$quarter,
+                          bio_data$haul,
+                          sep = "_")
+                                
+unique(bio_data$haul_id) |> head(20)
+
+# Now join in trawl data into the bio data (and then into stomach data)
+colnames(bio_data)
+colnames(trawl_data_wide)
+
+# Check first for overlapping columns, and if so, if one of the datasets has any NAs
+common_cols <- intersect(colnames(bio_data), colnames(trawl_data_wide))
+
+unique(is.na(trawl_data_wide[, common_cols]))
+unique(is.na(bio_data[, common_cols]))
+
+# Trawl data has some NA's in the common columns. Select only the important columns
+colnames(trawl_data_wide)[!colnames(trawl_data_wide) %in% colnames(bio_data)]
+
+trawl_data_wide <- trawl_data_wide |>
+  dplyr::select(haul_id, fle_kg_km2, mcod_kg_km2, scod_kg_km2, lat, lon, bottom_depth, X, Y, smhi_serial_no)
+
+bio_data <- left_join(bio_data, trawl_data_wide, by = "haul_id")
+
+names(bio_data)
+```
+
+Summarise haul data on the ICES rectangle level to join into the diet
+
+```{r}
+# Now calculate spatial overlap in biomass density... 
+qyear_rect_sum_biom <- bio_data |> 
+  dplyr::select(fle_kg_km2, mcod_kg_km2, scod_kg_km2, ices, year, quarter) |> 
+  rename(ices_rect = ices) |>
+  group_by(year, quarter, ices_rect) |>
+  summarise(mean_fle = mean(fle_kg_km2),
+            mean_scod = mean(scod_kg_km2),
+            mean_mcod = mean(mcod_kg_km2)) 
+
+# Join into diet data
+ovr <- ovr |> 
+  pivot_wider(names_from = overlap_group, values_from = overlap) |> 
+  drop_na() |> 
+  left_join(qyear_rect_sum_biom)
+```
+
+Fit zero inflated beta regressions using brms
+
+```{r}
+# https://www.andrewheiss.com/blog/2021/11/08/beta-regression-guide/#zero-inflated-beta-regression-bayesian-style
+
+# Full model
+ovr <- ovr |>
+  ungroup() |> 
+  clean_names() |> 
+  pivot_longer(c("flounder_small_cod", "flounder_large_cod", "small_cod_large_cod")) |> 
+  mutate(value = ifelse(value < 1e-15, 0, value),
+         mean_biom_sc = as.numeric(scale(log(mean_fle + mean_scod + mean_mcod) / 3)),
+         )
+
+zib_model <- bf(
+  value ~ name*mean_biom_sc,
+  phi ~ name,
+  zi ~ name,
+  family = zero_inflated_beta()
+)
+
+fit <- brm(
+  formula = zib_model,
+  data = ovr,
+  cores = 4,
+  chains = 4,
+  iter = 4000
+)
+
+ovr <- ovr |> 
+  mutate(name2 = ifelse(name == "flounder_large_cod", "Flounder\nLarge cod", name),
+         name2 = ifelse(name == "flounder_small_cod", "Flounder\nSmall cod", name2),
+         name2 = ifelse(name == "small_cod_large_cod", "Small cod\nLarge cod", name2))
+
+p1 <- ovr |>
+  data_grid(name = unique(name),
+            mean_biom_sc = 0) |>
+  mutate(name2 = ifelse(name == "flounder_large_cod", "Flounder\nLarge cod", name),
+         name2 = ifelse(name == "flounder_small_cod", "Flounder\nSmall cod", name2),
+         name2 = ifelse(name == "small_cod_large_cod", "Small cod\nLarge cod", name2)) |> 
+  add_epred_draws(fit) |>
+  ggplot(aes(.epred, name2)) +
+  geom_jitter(data = ovr, aes(value, name2, color = name2), height = 0.2, width = 0, alpha = 0.4) +
+  stat_pointinterval(.width = c(.66, .95), color = "gray30") +
+  geom_vline(xintercept = 0.6, linetype = 2, alpha = 0.6) +
+  scale_color_brewer(palette = "Set1") + 
+  labs(x = "Schoener's overlap index", y = "", color = "") +
+  geom_stripped_rows(color = NA) +
+  coord_cartesian(expand = 0, xlim = c(-0.03, 1)) +
+  theme(plot.margin = unit(c(0, 0.3, 0, 0), "cm")) +
+  guides(color = "none") +
+  NULL
+
+pal <- brewer.pal(name = "RdBu", n = 7)
+
+# Check CI's
+fit |>
+  spread_draws(b_mean_biom_sc,
+               `b_nameflounder_small_cod:mean_biom_sc`,
+               `b_namesmall_cod_large_cod:mean_biom_sc`) |>
+  mutate("Flounder\nLarge cod" = b_mean_biom_sc,
+         "Flounder\nSmall cod" = b_mean_biom_sc + `b_nameflounder_small_cod:mean_biom_sc`,
+         "Small cod\nLarge cod" = b_mean_biom_sc + `b_namesmall_cod_large_cod:mean_biom_sc`,
+         ) |> 
+  summarise(mean = mean(`Small cod\nLarge cod`),
+            upr = quantile(`Small cod\nLarge cod`, probs = 0.845))
+
+p2 <- fit |>
+  spread_draws(b_mean_biom_sc,
+               `b_nameflounder_small_cod:mean_biom_sc`,
+               `b_namesmall_cod_large_cod:mean_biom_sc`) |>
+  mutate("Flounder\nLarge cod" = b_mean_biom_sc,
+         "Flounder\nSmall cod" = b_mean_biom_sc + `b_nameflounder_small_cod:mean_biom_sc`,
+         "Small cod\nLarge cod" = b_mean_biom_sc + `b_namesmall_cod_large_cod:mean_biom_sc`,
+         ) |>
+  pivot_longer(c(`Flounder\nLarge cod`, `Flounder\nSmall cod`, `Small cod\nLarge cod`),
+               names_to = "name2", values_to = "slope") |> 
+  #ggplot(aes(slope, `Overlap group`, fill = after_stat(x < 0))) +
+  ggplot(aes(slope, name2, fill = name2, color = name2, alpha = after_stat(x < 0))) +
+  scale_fill_brewer(palette = "Set1", name = "") +
+  scale_color_brewer(palette = "Set1", name = "") + 
+  scale_alpha_manual(values = c(0.4, 0.7)) + 
+  ggdist::stat_eye() +
+  stat_pointinterval(.width = c(.66, .95), color = "gray10") +
+  labs(y = "", x = "Slope of biomass density\non the mean Schoener's diet overlap") +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.6) +
+  theme(legend.position.inside = c(0.15, 0.1)) +
+  guides(alpha = guide_legend(position = "inside"),
+         fill = "none", color = "none") +
+  geom_stripped_rows(aes(slope, name2, fill = name2),
+                     inherit.aes = FALSE) +
+  coord_cartesian(expand = 0) +
+  NULL
+
+# Conditional
+p3 <- ovr |>
+  data_grid(name = unique(name),
+            mean_biom_sc = seq_range(mean_biom_sc, n = 101)) |>
+  mutate(name2 = ifelse(name == "flounder_large_cod", "Flounder\nLarge cod", name),
+         name2 = ifelse(name == "flounder_small_cod", "Flounder\nSmall cod", name2),
+         name2 = ifelse(name == "small_cod_large_cod", "Small cod\nLarge cod", name2)) |> 
+  add_epred_draws(fit) |>
+  ggplot(aes(x = mean_biom_sc, y = value, fill = name2, color = name2)) +
+  stat_lineribbon(aes(y = .epred), .width = c(.95), alpha = 0.6) +
+  geom_point(data = ovr, alpha = 0.5) +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_color_brewer(palette = "Set1") + 
+  theme(legend.position.inside = c(0.90, 0.84)) + 
+  labs(y = "Schoener's overlap index", x = "Scaled cod and flounder mean biomass density",
+       fill = "", color = "") + 
+  guides(fill = guide_legend(position = "inside"))
+
+p3
+
+pp <- (p1 + p2) + plot_layout(axes = "collect")
+
+pp / p3 +
+  plot_annotation(tag_levels = "a")
+
+ggsave(paste0(home, "/figures/supp/schoener_zib.pdf"), width = 17, height = 20, units = "cm")
+```
+
+## Change the groups we calculate overlap on
+
+```{r}
+# Calculate relative prey weight and average by size-class
+d2 <- d |>
+  dplyr::select(ends_with("_tot"))
+
+d2$pred_id <- d$pred_id
+
+d2 <- d2 |>
+  left_join(d |> dplyr::select(pred_length_cm, pred_weight_g, pred_id, species), by = "pred_id")
+
+qyear_rect_sum <- d2 |> 
+  pivot_longer(ends_with("_tot")) |> 
+  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
+  mutate(group = "Flounder",
+         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+  group_by(year, quarter, ices_rect, group) |>
+  summarise(n = length(unique(pred_id)),
+            tot_prey = sum(value)) |> 
+  ungroup() |> 
+  group_by(year, quarter, ices_rect) |> 
+  mutate(min_stom = min(n)) |> 
+  ungroup() |>
+  mutate(id = paste(year, quarter, ices_rect, group, sep = "_")) |> 
+  dplyr::select(-year, -quarter, -ices_rect, -group) |> 
+  filter(n > 3)
+
+diet_prop <- d2 |> 
+  pivot_longer(ends_with("_tot")) |> 
+  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
+  mutate(group = "Flounder",
+         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+  group_by(year, quarter, ices_rect, group, name) |>
+  summarise(tot_prey_by_grp = sum(value)) |> 
+  ungroup() |>
+  mutate(id = paste(year, quarter, ices_rect, group, sep = "_")) |> 
+  filter(id %in% unique(qyear_rect_sum$id)) |> 
+  left_join(qyear_rect_sum, by = "id") |> 
+  mutate(prop_prey = tot_prey_by_grp / tot_prey)
+  
+# Calculate overlap by year and ices rect and species group. Make the proportions wide!
+#unique(diet_prop$group)
+diet_prop_wide <- diet_prop |> 
+  dplyr::select(-tot_prey_by_grp, -tot_prey, -id, -n) |> 
+  pivot_wider(names_from = group, values_from = prop_prey) |> 
+  mutate(abs_f_sc = abs(Flounder - `Small cod`),
+         abs_f_lc = abs(Flounder - `Large cod`),
+         abs_lc_sc = abs(`Large cod` - `Small cod`)) |> 
+  group_by(year, quarter, ices_rect) |> 
+  summarise(`Flounder\nSmall cod` = 1 - 0.5*sum(abs_f_sc),
+            `Flounder\nLarge cod` = 1 - 0.5*sum(abs_f_lc),
+            `Small cod\nLarge cod` = 1 - 0.5*sum(abs_lc_sc))
+    
+diet_prop_wide$latitude <- mapplots::ices.rect(diet_prop_wide$ices_rect)$lat
+diet_prop_wide$longitude <- mapplots::ices.rect(diet_prop_wide$ices_rect)$lon
+
+diet_prop_wide <- sdmTMB::add_utm_columns(diet_prop_wide)
+
+ovr <- diet_prop_wide |>
+  pivot_longer(c(`Flounder\nSmall cod`, `Flounder\nLarge cod`, `Small cod\nLarge cod`),
+               names_to = "overlap_group", values_to = "overlap") |> 
+  drop_na(overlap)
+
+ovr
+
+
+# Now calculate a new overlap df with match cod and flounder sizes
+qyear_rect_sum2 <- d2 |> 
+  pivot_longer(ends_with("_tot")) |> 
+  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
+  mutate(group = NA,
+         group = ifelse(species == "Cod" & pred_length_cm >= 21 & pred_length_cm <= 30, "cod2", group),
+         group = ifelse(species == "Flounder" & pred_length_cm >= 20 & pred_length_cm <= 30, "flounder2", group)) |> 
+  drop_na(group) |> 
+  group_by(year, quarter, ices_rect, group) |>
+  summarise(n = length(unique(pred_id)),
+            tot_prey = sum(value)) |> 
+  ungroup() |> 
+  group_by(year, quarter, ices_rect) |> 
+  mutate(min_stom = min(n)) |> 
+  ungroup() |>
+  mutate(id = paste(year, quarter, ices_rect, group, sep = "_")) |> 
+  dplyr::select(-year, -quarter, -ices_rect, -group) |> 
+  filter(n > 3)
+
+diet_prop2 <- d2 |> 
+  pivot_longer(ends_with("_tot")) |> 
+  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
+  mutate(group = NA,
+         group = ifelse(species == "Cod" & pred_length_cm >= 21 & pred_length_cm <= 30, "cod2", group),
+         group = ifelse(species == "Flounder" & pred_length_cm >= 20 & pred_length_cm <= 30, "flounder2", group)) |> 
+  drop_na(group) |> 
+  group_by(year, quarter, ices_rect, group, name) |>
+  summarise(tot_prey_by_grp = sum(value)) |> 
+  ungroup() |>
+  mutate(id = paste(year, quarter, ices_rect, group, sep = "_")) |> 
+  filter(id %in% unique(qyear_rect_sum2$id)) |> 
+  left_join(qyear_rect_sum2, by = "id") |> 
+  mutate(prop_prey = tot_prey_by_grp / tot_prey)
+  
+# Calculate overlap by year and ices rect and species group. Make the proportions wide!
+#unique(diet_prop$group)
+diet_prop_wide2 <- diet_prop2 |> 
+  dplyr::select(-tot_prey_by_grp, -tot_prey, -id, -n) |> 
+  pivot_wider(names_from = group, values_from = prop_prey) |> 
+  mutate(abs_f_c = abs(`flounder2` - `cod2`)) |> 
+  group_by(year, quarter, ices_rect) |> 
+  summarise(overlap = 1 - 0.5*sum(abs_f_c)) |> 
+  mutate(overlap_group = "Cod20-30\nFlounder20-30")
+    
+ovr2 <- diet_prop_wide2 |>
+  # pivot_longer(c(`Flounder\nSmall cod`, `Flounder\nLarge cod`, `Small cod\nLarge cod`),
+  #              names_to = "overlap_group", values_to = "overlap") |> 
+  drop_na(overlap)
+
+ovr |>
+  ungroup() |> 
+  bind_rows(ovr2) |> 
+  summarise(overlap = mean(overlap),
+            .by = overlap_group)
+```
+
+```{r}
+knitr::knit_exit()
+```

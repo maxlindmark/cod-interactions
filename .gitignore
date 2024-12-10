@@ -33,6 +33,7 @@ data/*
 data/clean/ctd_trawl_joined.csv
 
 data/clean/full_stomach_data.csv
+data/clean/full_stomach_data_x.csv
 
 
 # Old text docs

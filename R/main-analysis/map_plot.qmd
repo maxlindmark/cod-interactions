@@ -33,6 +33,7 @@ library(terra)
 library(viridis)
 library(RColorBrewer)
 library(ggspatial)
+library(raster)
 
 home <- here::here()
 # Source code for map plots
@@ -51,45 +52,46 @@ d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
 ## Plot
 
 ```{r}
-d2 <- d %>%
-  group_by(haul_id, year) %>% 
-  mutate(n = n()) %>% 
+d2 <- d |>
+  group_by(haul_id, year) |> 
+  mutate(n = n()) |>  
   distinct(haul_id, .keep_all = TRUE)
 
 pal <- brewer.pal(name = "RdBu", n = length(unique(d2$year)))
 
 plot_map +
-  geom_sf(color = "gray80") + 
+  geom_sf(color = "gray80", fill = NA, inherit.aes = FALSE) + 
   geom_point(data = d2, aes(X*1000, Y*1000, color = as.factor(year),
                             fill = as.factor(year),
                             size = n)) + 
-  scale_color_manual(values = alpha(pal, alpha = 0.5)) +
-  scale_radius(range = c(0.5, 2.5)) +
-  theme_sleek(base_size = 9) + 
+  scale_color_manual(values = alpha(pal, alpha = 0.8)) +
+  scale_size(range = c(0.2, 2.7)) +
+  theme_sleek(base_size = 9) +
   xlim(xmin2*0.83, xmax2*1.13) +
-  ylim(ymin2*0.98, ymax2) + 
+  #ylim(ymin2*0.98, ymax2) +
+  ylim(ymin2*0.999, ymax2) +
   theme(legend.position = c(0.68, 0.07),
         legend.direction = "horizontal",
         legend.box = "horizontal",
         legend.key.size = unit(0.02, "cm")) +
   guides(colour = guide_legend(title.position = "top", title.hjust = 0.5, position = "inside"),
          size = guide_legend(title.position = "top", title.hjust = 0.5, ncol = 2, position = "inside")) +
-  labs(shape = "Quarter", color = "Year") + 
+  labs(shape = "Quarter", color = "Year") +
   annotate("text", label = "Sweden", x = xmin2 + 0.15*xrange, y = ymin2 + 0.75*yrange, color = "gray50", size = 2.6) +
   annotate("text", label = "Denmark", x = xmin2 - 0.14*xrange, y = ymin2 + 0.2*yrange, color = "gray50", size = 2.6, angle = 60) +
   annotate("text", label = "Germany", x = xmin2 - 0.06*xrange, y = ymin2 - 0.26*yrange, color = "gray50", size = 2.6) +
   annotate("text", label = "Poland", x = xmin2 + 0.7*xrange, y = ymin2 - 0.12*yrange, color = "gray50", size = 2.6) +
   annotate("text", label = "Russia", x = xmin2 + 1.18*xrange, y = ymin2 - 0.05*yrange, color = "gray50", size = 2.6) +
   annotate("text", label = "Lithuania", x = xmin2 + 1.24*xrange, y = ymin2 + 0.28*yrange, color = "gray50", size = 2.6, angle = 75) +
-  annotate("text", label = "Latvia", x = xmin2 + 1.24*xrange, y = ymin2 + 0.55*yrange, color = "gray50", size = 2.6, angle = 75) + 
-  annotation_scale(bar_cols = c("grey30", "white"), height = unit(0.1, "cm")) + 
+  annotate("text", label = "Latvia", x = xmin2 + 1.24*xrange, y = ymin2 + 0.55*yrange, color = "gray50", size = 2.6, angle = 75) +
+  annotation_scale(bar_cols = c("grey30", "white"), height = unit(0.1, "cm")) +
   annotation_north_arrow(location = "tl", which_north = "true", height = unit(0.85, "cm"),
                          width = unit(0.85, "cm"), pad_x = unit(0.1, "in"), pad_y = unit(0.1, "in"),
                          style = north_arrow_fancy_orienteering(
                            fill = c("grey40", "white"),
                            line_col = "grey20"))
 
-ggsave(paste0(home, "/figures/map_plot.pdf"), width = 14, height = 12, units = "cm")
+ggsave(paste0(home, "/figures/map_plot.pdf"), width = 14, height = 10, units = "cm")
 ```
 
 
