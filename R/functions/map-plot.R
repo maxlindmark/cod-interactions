@@ -6,6 +6,8 @@ library(rnaturalearth)
 library(rnaturalearthdata)
 theme_set(theme_sleek())
 
+home <- here::here()
+
 sf::sf_use_s2(FALSE)
 
 # Load shapefile
