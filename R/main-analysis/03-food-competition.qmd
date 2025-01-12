@@ -49,22 +49,20 @@ d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv")) |>
   drop_na(group) |> 
   drop_na(oxy)
 
-t <- d |> filter(fle_kg_km2 > 0)
-t <- d |> filter(mcod_kg_km2 > 0)
-t <- d |> filter(scod_kg_km2 > 0)
-
 # Calculate relative prey weights (saduria and benthos)
 d <- d |> 
-  rename(oxygen = oxy) %>% 
+  drop_na(group) |> 
+  drop_na(oxy) |> 
+  rename(oxygen = oxy) %>%
   mutate(tot_weight = rowSums(select(., ends_with('_tot'))),  
          benthic_weight = amphipoda_tot + bivalvia_tot + gadus_morhua_tot +
            gobiidae_tot + mysidae_tot + non_bio_tot + 
            other_crustacea_tot + other_tot + other_pisces_tot + platichthys_flesus_tot +
            polychaeta_tot + saduria_entomon_tot) |> 
   rename(saduria_weight = saduria_entomon_tot,
-         flounder_density = fle_kg_km2,
-         large_cod_density = mcod_kg_km2,
-         small_cod_density = scod_kg_km2) |> 
+         flounder_density = kg_km2_flounder,
+         large_cod_density = kg_km2_large_cod,
+         small_cod_density = kg_km2_small_cod) |> 
   mutate(tot_rel_weight = tot_weight / (pred_weight_g - tot_weight), 
          benthic_rel_weight = benthic_weight / (pred_weight_g - tot_weight),
          saduria_rel_weight = saduria_weight / (pred_weight_g - tot_weight)) |> 
@@ -72,15 +70,15 @@ d <- d |>
   dplyr::select(-predator_latin_name, date) |> 
   # Add small constant to large cod density because we want to take the log of it
   mutate(large_cod_density = ifelse(large_cod_density == 0,
-                                    min(filter(d, mcod_kg_km2 > 0)$mcod_kg_km2)*0.5,
+                                    min(filter(d, kg_km2_large_cod > 0)$kg_km2_large_cod)*0.5,
                                     large_cod_density),
          flounder_density = ifelse(flounder_density == 0,
-                                   min(filter(d, fle_kg_km2 > 0)$fle_kg_km2)*0.5,
+                                   min(filter(d, kg_km2_flounder > 0)$kg_km2_flounder)*0.5,
                                    flounder_density),
          small_cod_density = ifelse(small_cod_density == 0,
-                                    min(filter(d, scod_kg_km2 > 0)$scod_kg_km2)*0.5,
+                                    min(filter(d, kg_km2_small_cod > 0)$kg_km2_small_cod)*0.5,
                                     small_cod_density)) |> 
-  # Scale variables
+  # scale variables
   mutate(fyear = as.factor(year),
          fquarter = as.factor(quarter),
          fhaul_id = as.factor(haul_id),
@@ -113,11 +111,6 @@ d |>
 ggsave(paste0(home, "/figures/supp/data_distribution.pdf"), width = 17, height = 17, units = "cm")
 
 # Size distribution by year
-
-t <- d |> filter(group == "large cod")
-
-hist(t$pred_length_cm)
-
 d |> 
   distinct(pred_id, .keep_all = TRUE) |> 
   mutate(group = str_to_sentence(group)) |> 
@@ -137,23 +130,39 @@ d |>
   geom_histogram()
 
 # How many with 3 or fewer and what are their sample sizes?
-d |> 
-  summarise(n = length(unique(pred_id)), .by = haul_id) |> 
-  mutate(s = ifelse(n < 3, "s", "l")) |> 
-  summarise(n = n(), .by = s)
-# (29/316)*100
+# d |> 
+#   summarise(n = length(unique(pred_id)), .by = haul_id) |> 
+#   mutate(s = ifelse(n < 3, "s", "l")) |> 
+#   summarise(n = n(), .by = s)
+# # (29/316)*100
+# 
+# # What is the size range of those 10%?
+# d |> 
+#   mutate(n = length(unique(pred_id)), .by = haul_id) |> 
+#   filter(n > 1 & n < 11) |> 
+#   summarise(max = max(pred_length_cm),
+#             min = min(pred_length_cm),
+#             .by = c(group, haul_id)) |> 
+#   mutate(diff = max - min) |> 
+#   as.data.frame()
+#   #summarise(mean = mean(diff))
+```
 
-# What is the size range of those 10%?
-d |> 
-  mutate(n = length(unique(pred_id)), .by = haul_id) |> 
-  filter(n > 1 & n < 11) |> 
-  summarise(max = max(pred_length_cm),
-            min = min(pred_length_cm),
-            .by = c(group, haul_id)) |> 
-  mutate(diff = max - min) |> 
-  as.data.frame()
-  #summarise(mean = mean(diff))
+```{r}
+# Calculate weights
 
+# The reason to round here is because data come as per hour
+d <- d |> 
+  mutate(sampled_n = n(), .by = c(haul_id, group)) |> 
+  mutate(f_weight = round(n_catch_flounder) / sampled_n,
+         sc_weight = round(n_catch_small_cod) / sampled_n,
+         lc_weight = round(n_catch_large_cod) / sampled_n) |> 
+  mutate(f_weight = f_weight/mean(f_weight),
+         sc_weight = sc_weight/mean(sc_weight),
+         lc_weight = lc_weight/mean(lc_weight)) |> 
+  mutate(f_weight2 = f_weight*2,
+         sc_weight2 = sc_weight*2,
+         lc_weight2 = lc_weight*2)
 ```
 
 ## Quick explore
@@ -222,6 +231,14 @@ for(i in unique(d$group)) {
   
   dd <- filter(d, group == i)
   
+    if(i == "flounder"){
+      weigths <- dd$f_weight
+      } else if(i == "small cod"){
+        weigths <- dd$sc_weight
+        } else if(i == "large cod"){
+          weigths <- dd$lc_weight
+          }
+  
   mesh <- make_mesh(dd,
                     xy_cols = c("X", "Y"),
                     cutoff = 5)
@@ -244,6 +261,7 @@ for(i in unique(d$group)) {
                   data = dd,
                   mesh = mesh,
                   family = tweedie(),
+                  weights = weigths, 
                   spatiotemporal = "iid", 
                   spatial = "on",
                   time = "year")
@@ -262,6 +280,7 @@ for(i in unique(d$group)) {
                       data = dd,
                       mesh = mesh,
                       family = tweedie(),
+                      weights = weigths, 
                       spatiotemporal = "iid", 
                       spatial = "off", 
                       time = "year")
@@ -276,6 +295,7 @@ for(i in unique(d$group)) {
                       data = dd,
                       mesh = mesh,
                       family = tweedie(),
+                      weights = weigths, 
                       spatiotemporal = "iid", 
                       spatial = "on",
                       time = "year")
@@ -387,14 +407,14 @@ for(i in unique(d$group)) {
                     cutoff = 5)
 
   # Total model
-  # NOTE: turning off spatial here due to convergence and AIC
   m_tot <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + pred_length_cm_sc +
                     large_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc,
                   data = dd,
                   mesh = mesh,
                   family = tweedie(),
+                  weights = dd$lc_weight,
                   spatiotemporal = "iid", 
-                  spatial = "on",
+                  spatial = "off",
                   time = "year")
   
   sanity(m_tot)
@@ -404,7 +424,7 @@ for(i in unique(d$group)) {
   samps <- sdmTMBextra::predict_mle_mcmc(m_tot, mcmc_iter = 401, mcmc_warmup = 400)
   mcmc_res <- residuals(m_tot, type = "mle-mcmc", mcmc_samples = samps)
   dd$res <- as.vector(mcmc_res)
-    
+
   res_tot <- dd
   
   # Range
@@ -484,7 +504,6 @@ plot_map_fc +
   labs(color = "Spatial\nrandom effect") +
   theme(axis.text.x = element_text(angle = 90),
         legend.position = "bottom",
-        #legend.direction = "vertical",
         legend.key.width = unit(0.6, "cm"),
         legend.key.height = unit(0.2, "cm"))
 
@@ -603,7 +622,6 @@ tot_eps
 ## Plot range
 
 ```{r plot ranges}
-#pal <- brewer.pal(n = 8, name = "Dark2")[c(2, 7, 6)]
 pal <- (brewer.pal(n = 11, name = "RdYlBu")[c(11, 4, 1)])
 
 range_df |> arrange(estimate)
@@ -628,8 +646,8 @@ ggsave(paste0(home, "/figures/supp/ranges.pdf"), width = 11, height = 11, units 
 
 ```{r plot residuals}
 # Plot residuals
-res_df |> 
-  mutate(group = str_to_title(group)) |> 
+res_df |>
+  mutate(group = str_to_title(group)) |>
   ggplot(aes(sample = res)) +
   stat_qq(size = 0.75, shape = 21, fill = NA) +
   facet_grid(model ~ group) +
@@ -656,76 +674,89 @@ coef_df2 <- coef_df |>
          term = str_replace_all(term, "llco", "ll co"),
          term = str_replace(term, ":", " × "),
          term = str_to_sentence(term),
-         group = str_to_sentence(group)) |> 
-  mutate(model2 = ifelse(model == "Saduria", "Prey=Saduria", NA),
+         group = str_to_sentence(group),
+         model2 = ifelse(model == "Saduria", "Prey=Saduria", NA),
          model2 = ifelse(model == "Benthos", "Prey=Benthic prey", model2),
-         model2 = ifelse(model == "Total", "Prey=Total prey", model2)) |> 
-  mutate(sig2 = ifelse(sig == "Y", "N", "Y")) |> 
-  mutate(term = ifelse(term == "Predlengthcm", "Predator length", term))
+         model2 = ifelse(model == "Total", "Prey=Total prey", model2),
+         sig2 = ifelse(sig == "Y", "N", "Y"),
+         term = ifelse(term == "Predlengthcm", "Predator length", term),
+         group2 = paste0("Predator=", group))
 
 p1 <- 
-  coef_df2 |> 
-  filter(model == "Benthos") |> 
-  ggplot(aes(estimate, term, alpha = sig2,
-                 color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
+  coef_df2 |>
+  filter(model == "Saduria") |> 
+  ggplot(aes(estimate, term, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")), alpha = sig2)) +
   geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
-  facet_wrap2(~model2, ncol = 2, scales = "free") +
+  facet_grid(factor(model2, levels = c("Prey=Saduria", "Prey=Benthic prey")) ~ 
+               factor(group2, levels = c("Predator=Flounder", "Predator=Small cod", "Predator=Large cod"))) + 
   geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
-  geom_point(position = position_dodge(width = 0.5), size = 1.5) +
+  geom_point(position = position_dodge(width = 0.5), size = 2) +
   geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
                 position = position_dodge(width = 0.5)) +
   scale_alpha_manual(values = c(1, 0.4)) +
   scale_color_manual(values = pal) +
-  labs(x = "", y = "", alpha = "95% CI crossing 0", color = "Predator") +
-  guides(color = guide_legend(title.position = "top", title.hjust = 0.5),
-         alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
-  theme(legend.position = c(0.75, 0.2),
+  labs(x = "Estimate", y = "", alpha = "95% CI crossing 0", color = "Model") +
+  theme(legend.position = "bottom", 
         legend.direction = "vertical",
-        legend.box.spacing = unit(-3, "pt"),
-        legend.margin = margin(0, 0, 0, 0)) +
+        axis.title.x = element_blank(),
+        axis.text.y = ggtext::element_markdown()) +
+  guides(color = "none",
+         alpha = "none") +
   NULL
 
 p2 <- 
   coef_df2 |> 
-  filter(model == "Saduria") |> 
-  ggplot(aes(estimate, term, alpha = sig2,
-                 color = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
+  filter(model == "Benthos") |> 
+  ggplot(aes(estimate, term, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")), alpha = sig2)) +
   geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
-  facet_wrap2(~model2, ncol = 2, scales = "free") +
+  #facet_wrap(~factor(model2, levels = c("Prey=Saduria", "Prey=Benthic prey")), ncol = 1) + 
+  facet_grid(factor(model2, levels = c("Prey=Saduria", "Prey=Benthic prey")) ~ 
+               factor(group2, levels = c("Predator=Flounder", "Predator=Small cod", "Predator=Large cod"))) +
   geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
-  geom_point(position = position_dodge(width = 0.5), size = 1.5) +
+  geom_point(position = position_dodge(width = 0.5), size = 2) +
   geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
                 position = position_dodge(width = 0.5)) +
   scale_alpha_manual(values = c(1, 0.4)) +
   scale_color_manual(values = pal) +
-  labs(x = "", y = "") +
+  labs(x = "Estimate", y = "", alpha = "95% CI crossing 0", color = "Model") +
+  theme(legend.position = "bottom", 
+        legend.direction = "vertical",
+        axis.title.x = element_blank(),
+        strip.text.x.top = element_blank(),
+        axis.text.y = ggtext::element_markdown()) +
   guides(color = "none",
-         alpha = "none")
+         alpha = "none") +
+  NULL
 
 p3 <- 
   coef_df2 |> 
   filter(model == "Total") |> 
-  ggplot(aes(estimate, term, alpha = sig2,
-                 color = "Large cod")) +
+  ggplot(aes(estimate, term, color = factor(group, levels = c("Flounder", "Small cod", "Large cod")), alpha = sig2)) +
   geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
-  facet_wrap2(~model2, ncol = 2, scales = "free") +
+  #facet_wrap(~factor(model2), ncol = 1, strip.position = "right") + 
+  facet_grid(model2 ~ factor(group2, levels = c("Predator=Flounder", "Predator=Small cod", "Predator=Large cod"))) +
   geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
-  geom_point(position = position_dodge(width = 0.5), size = 1.5) +
+  geom_point(position = position_dodge(width = 0.5), size = 2) +
   geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
                 position = position_dodge(width = 0.5)) +
   scale_alpha_manual(values = c(1, 0.4)) +
   scale_color_manual(values = pal[3]) +
-  labs(x = "", y = "") +
-  guides(color = "none",
-         alpha = "none")
+  labs(x = "Estimate", y = "", alpha = "95% CI crossing 0", color = "Model") +
+  theme(legend.position = "left", 
+        legend.direction = "vertical",
+        strip.text.x.top = element_blank(),
+        axis.text.y = ggtext::element_markdown()) +
+  guides(color = "none", 
+         alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
+  NULL
 
-p2 / p1 / p3 +
+p3b <- (plot_spacer() | p3) & plot_layout(widths = c(1, 5.3))
+
+(p1 / p2 / (p3b)) +
   plot_annotation(tag_levels = "a") +
-  plot_layout(axes = "collect", guides = "collect") & 
-  theme(legend.position = "bottom") &
-  coord_cartesian(xlim = c(-1.55, 1.15))
+  plot_layout(axes = "collect") & coord_cartesian(xlim = c(min(coef_df2$conf.low), max(coef_df2$conf.high)))
 
-ggsave(paste0(home, "/figures/coefs.pdf"), width = 11, height = 22, units = "cm")
+ggsave(paste0(home, "/figures/coefs.pdf"), width = 17, height = 15, units = "cm")
 ```
 
 ## Plot year and quarter coefficients
@@ -746,9 +777,7 @@ coef_df3 <- coef_df |>
 ggplot(coef_df3, aes(term, exp(estimate), color = factor(group, levels = c("Flounder", "Small cod", "Large cod")), 
                      fill = factor(group, levels = c("Flounder", "Small cod", "Large cod")))) +
   facet_wrap(~model2, scales = "free", ncol = 1) +
-  #geom_line(position = position_dodge(width = 0.5)) +
   geom_point(position = position_dodge(width = 0.4)) +
-  #geom_ribbon(aes(ymin = exp(conf.low), ymax = exp(conf.high)), alpha = 0.2, color = NA) +
   geom_errorbar(aes(ymin = exp(conf.low), ymax = exp(conf.high)), alpha = 0.4, width = 0,
                 position = position_dodge(width = 0.4)) +
   scale_color_manual(values = pal) +
@@ -817,7 +846,7 @@ pred_df2 <- bind_rows(pred_flounder_df,
                                          median(density_saduria_sc, na.rm = TRUE)))
 
 # 75% CI!!
-ggplot(pred_df |> filter(model == "Saduria" & xvar == "flounder"),# & !group == "Large cod"),
+ggplot(pred_df |> filter(model == "Saduria" & xvar == "flounder"),
        aes(flounder_density_sc, exp(est), color = sad, fill = sad)) +
   geom_ribbon(aes(ymin = exp(est - 1.150*est_se), ymax = exp(est + 1.150*est_se)),
               alpha = 0.3, color = NA) +
@@ -827,8 +856,6 @@ ggplot(pred_df |> filter(model == "Saduria" & xvar == "flounder"),# & !group == 
              ncol = 3) +
   scale_color_brewer(palette = "Dark2") +
   scale_fill_brewer(palette = "Dark2") +
-  coord_cartesian(#xlim = c(-0.5, 0.5), 
-                  expand = 0, clip = "off") +
   labs(x = "Flounder density", y = "Relative saduria weight",
        color = "Saduria", fill = "Saduria") + 
   theme(legend.position = c(0.95, 0.84),
@@ -843,7 +870,7 @@ Showing conditional effects of oxygen on small cod feeding on benthos
 
 ```{r}
 
-  dd <- filter(d, group == "small cod")
+  dd <- filter(d, group == "large cod")
 
   mesh <- make_mesh(dd,
                     xy_cols = c("X", "Y"),
@@ -878,10 +905,13 @@ Showing conditional effects of oxygen on small cod feeding on benthos
   ggplot(p, aes(oxygen, exp(est))) +
     geom_line() +
     theme_sleek(base_size = 14) +
-    geom_hline(yintercept = 0.0025, col = "red") +
-    geom_hline(yintercept = 0.0040, col = "red") +
+    geom_hline(yintercept = 0.0011, col = "red") +
+    geom_hline(yintercept = 0.0016, col = "red") +
     geom_vline(xintercept = 4.8, col = "red") +
     geom_vline(xintercept = 7.6, col = "red") +
     NULL
+  
+((0.0016 - 0.0011) / 0.0011) * 100
+
 ```
 

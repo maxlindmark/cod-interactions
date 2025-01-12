@@ -156,21 +156,18 @@ d_wide3 <- d_wide2 |>
 d_sel <- d |>
   dplyr::select(predator_latin_name, species, pred_weight_g, pred_length_cm,
                 year, quarter, month, ices_rect, subdiv, haul_id, smhi_serial_no,
-                X, Y, lat, lon, pred_id, fle_kg_km2, mcod_kg_km2, scod_kg_km2, date,
-                bottom_depth
+                X, Y, lat, lon, pred_id, date, bottom_depth,
+                kg_km2_small_cod, kg_km2_large_cod, n_catch_small_cod, n_catch_large_cod, kg_km2_flounder, n_catch_flounder
                 ) |> 
   distinct(pred_id, .keep_all = TRUE)
 
 d_wide3 <- left_join(d_wide3, d_sel)
 
-# mutate(size_group = ifelse(lengthcl >= 100 & lengthcl < 250, "small", NA),
-#        size_group = ifelse(lengthcl >= 250 & lengthcl < 500, "medium", size_group)) |> 
-
 d_wide3 <- d_wide3 |>
   mutate(group = NA,
          group = ifelse(species == "Flounder", "flounder", group),
-         group = ifelse(species == "Cod" & pred_length_cm >= 10 & pred_length_cm <= 25, "small cod", group),
-         group = ifelse(species == "Cod" & pred_length_cm > 25 & pred_length_cm <= 50, "large cod", group))
+         group = ifelse(species == "Cod" & pred_length_cm >= 10 & pred_length_cm < 25, "small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 25 & pred_length_cm < 50, "large cod", group))
 ```
 
 ## Add covariates

@@ -60,9 +60,9 @@ d <- d |>
            other_crustacea_tot + other_tot + other_pisces_tot + platichthys_flesus_tot +
            polychaeta_tot + saduria_entomon_tot) |> 
   rename(saduria_weight = saduria_entomon_tot,
-         flounder_density = fle_kg_km2,
-         large_cod_density = mcod_kg_km2,
-         small_cod_density = scod_kg_km2) |> 
+         flounder_density = kg_km2_flounder,
+         large_cod_density = kg_km2_large_cod,
+         small_cod_density = kg_km2_small_cod) |> 
   mutate(tot_rel_weight = tot_weight / (pred_weight_g - tot_weight), 
          benthic_rel_weight = benthic_weight / (pred_weight_g - tot_weight),
          saduria_rel_weight = saduria_weight / (pred_weight_g - tot_weight)) |> 
@@ -70,13 +70,13 @@ d <- d |>
   dplyr::select(-predator_latin_name, date) |> 
   # Add small constant to large cod density because we want to take the log of it
   mutate(large_cod_density = ifelse(large_cod_density == 0,
-                                    min(filter(d, mcod_kg_km2 > 0)$mcod_kg_km2)*0.5,
+                                    min(filter(d, kg_km2_large_cod > 0)$kg_km2_large_cod)*0.5,
                                     large_cod_density),
          flounder_density = ifelse(flounder_density == 0,
-                                   min(filter(d, fle_kg_km2 > 0)$fle_kg_km2)*0.5,
+                                   min(filter(d, kg_km2_flounder > 0)$kg_km2_flounder)*0.5,
                                    flounder_density),
          small_cod_density = ifelse(small_cod_density == 0,
-                                    min(filter(d, scod_kg_km2 > 0)$scod_kg_km2)*0.5,
+                                    min(filter(d, kg_km2_small_cod > 0)$kg_km2_small_cod)*0.5,
                                     small_cod_density)) |> 
   # scale variables
   mutate(fyear = as.factor(year),
@@ -91,7 +91,6 @@ d <- d |>
   # Scale length by group ..
   mutate(pred_length_cm_sc = as.numeric(scale(pred_length_cm)),
          .by = group)
-
 ```
 
 ## Fit models

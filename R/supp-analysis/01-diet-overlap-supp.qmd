@@ -70,8 +70,8 @@ d2$pred_id <- d$pred_id
 d2 <- d2 |>
   left_join(d |> dplyr::select(pred_length_cm, pred_weight_g, pred_id, species, year, quarter, ices_rect), by = "pred_id") |> 
   mutate(group = "Flounder",
-         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
-         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+         group = ifelse(species == "Cod" & pred_length_cm <  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 25, "Large cod", group)) |> 
   mutate(id = paste(year, quarter, ices_rect, group, sep = "_"))
 
 d2 |>
@@ -130,10 +130,10 @@ nd$lwr <- pred$fit - pred$se.fit*1.96
 # How many prey groups (filter those that make up > 1%)
 common_prey <- d |> 
   pivot_longer(ends_with("_tot")) |> 
-  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  filter(pred_length_cm >= 10 & pred_length_cm < 50) |> # These are the sizes we work with
   mutate(group = "Flounder",
-         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
-         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+         group = ifelse(species == "Cod" & pred_length_cm <  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 25, "Large cod", group)) |> 
   summarise(sum_sp = sum(value), .by = c(group, name)) |> 
   mutate(sum = sum(sum_sp), .by = group) |> 
   mutate(perc = (sum_sp / sum) * 100) |> 
@@ -143,10 +143,10 @@ common_prey <- d |>
 # Average number of predator IDs?
 avg_pred <- d2 |> 
   pivot_longer(ends_with("_tot")) |> 
-  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  filter(pred_length_cm >= 10 & pred_length_cm < 50) |> # These are the sizes we work with
   mutate(group = "Flounder",
-         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
-         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+         group = ifelse(species == "Cod" & pred_length_cm < 25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 25, "Large cod", group)) |> 
   mutate(id = paste(year, quarter, ices_rect, group, sep = "_"))
 
 unique(avg_pred$id)
@@ -199,11 +199,11 @@ d2 <- d2 |>
 
 qyear_rect_sum <- d2 |> 
   pivot_longer(ends_with("_tot")) |> 
-  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  filter(pred_length_cm >= 10 & pred_length_cm < 50) |> # These are the sizes we work with
   left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
   mutate(group = "Flounder",
-         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
-         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+         group = ifelse(species == "Cod" & pred_length_cm <  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 25, "Large cod", group)) |> 
   group_by(year, quarter, ices_rect, group) |>
   summarise(n = length(unique(pred_id)),
             tot_prey = sum(value)) |> 
@@ -218,15 +218,15 @@ qyear_rect_sum <- d2 |>
 
 # year_rect_sum |> arrange(n) |> as.data.frame()
 # year_rect_sum |> arrange(min_stom) |> as.data.frame()
-# summary(year_rect_sum$n)
+summary(qyear_rect_sum$n)
 
 diet_prop <- d2 |> 
   pivot_longer(ends_with("_tot")) |> 
-  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  filter(pred_length_cm >= 10 & pred_length_cm < 50) |> # These are the sizes we work with
   left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
   mutate(group = "Flounder",
-         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
-         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+         group = ifelse(species == "Cod" & pred_length_cm <  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 25, "Large cod", group)) |> 
   group_by(year, quarter, ices_rect, group, name) |>
   summarise(tot_prey_by_grp = sum(value)) |> 
   ungroup() |>
@@ -572,7 +572,7 @@ pp <- (p1 + p2) + plot_layout(axes = "collect")
 pp / p3 +
   plot_annotation(tag_levels = "a")
 
-ggsave(paste0(home, "/figures/supp/schoener_zib.pdf"), width = 17, height = 20, units = "cm")
+ggsave(paste0(home, "/figures/supp/schoener_zib_sensi.pdf"), width = 17, height = 20, units = "cm")
 ```
 
 ## Change the groups we calculate overlap on
@@ -589,11 +589,11 @@ d2 <- d2 |>
 
 qyear_rect_sum <- d2 |> 
   pivot_longer(ends_with("_tot")) |> 
-  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  filter(pred_length_cm >= 10 & pred_length_cm < 50) |> # These are the sizes we work with
   left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
   mutate(group = "Flounder",
-         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
-         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+         group = ifelse(species == "Cod" & pred_length_cm <  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 25, "Large cod", group)) |> 
   group_by(year, quarter, ices_rect, group) |>
   summarise(n = length(unique(pred_id)),
             tot_prey = sum(value)) |> 
@@ -607,11 +607,11 @@ qyear_rect_sum <- d2 |>
 
 diet_prop <- d2 |> 
   pivot_longer(ends_with("_tot")) |> 
-  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  filter(pred_length_cm >= 10 & pred_length_cm < 50) |> # These are the sizes we work with
   left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
   mutate(group = "Flounder",
-         group = ifelse(species == "Cod" & pred_length_cm <=  25, "Small cod", group),
-         group = ifelse(species == "Cod" & pred_length_cm > 25, "Large cod", group)) |> 
+         group = ifelse(species == "Cod" & pred_length_cm <  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 25, "Large cod", group)) |> 
   group_by(year, quarter, ices_rect, group, name) |>
   summarise(tot_prey_by_grp = sum(value)) |> 
   ungroup() |>
@@ -649,7 +649,7 @@ ovr
 # Now calculate a new overlap df with match cod and flounder sizes
 qyear_rect_sum2 <- d2 |> 
   pivot_longer(ends_with("_tot")) |> 
-  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  filter(pred_length_cm >= 10 & pred_length_cm < 50) |> # These are the sizes we work with
   left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
   mutate(group = NA,
          group = ifelse(species == "Cod" & pred_length_cm >= 21 & pred_length_cm <= 30, "cod2", group),
@@ -668,10 +668,10 @@ qyear_rect_sum2 <- d2 |>
 
 diet_prop2 <- d2 |> 
   pivot_longer(ends_with("_tot")) |> 
-  filter(pred_length_cm > 10 & pred_length_cm < 50) |> # These are the sizes we work with
+  filter(pred_length_cm >= 10 & pred_length_cm < 50) |> # These are the sizes we work with
   left_join(d |> dplyr::select(year, quarter, subdiv, ices_rect, X, Y, pred_id), by = "pred_id") |> 
   mutate(group = NA,
-         group = ifelse(species == "Cod" & pred_length_cm >= 21 & pred_length_cm <= 30, "cod2", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 20 & pred_length_cm <= 30, "cod2", group),
          group = ifelse(species == "Flounder" & pred_length_cm >= 20 & pred_length_cm <= 30, "flounder2", group)) |> 
   drop_na(group) |> 
   group_by(year, quarter, ices_rect, group, name) |>

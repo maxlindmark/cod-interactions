@@ -1,0 +1,420 @@
+---
+title: "Food competition analysis: weighting sensitivity"
+author: "Max Lindmark"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 80%
+editor: source
+execute: 
+  echo: true
+  eval: true
+  cache: false
+---
+
+## Load packages
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries, install if needed
+pkgs <- c("tidyverse", "tidylog", "RCurl", "sdmTMB", "RColorBrewer", "RCurl", "devtools",
+          "patchwork", "ggstats")
+
+if(length(setdiff(pkgs, rownames(installed.packages()))) > 0){
+
+    install.packages(setdiff(pkgs, rownames(installed.packages())), dependencies = T)
+
+}
+
+invisible(lapply(pkgs, library, character.only = T))
+
+library(sdmTMBextra)
+
+# Source map-plot
+source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+
+home <- here::here()
+```
+
+## Read data & prepare data
+
+```{r read data}
+#| warning: false
+
+d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
+
+# Calculate relative prey weights (saduria and benthos)
+d <- d |> 
+  drop_na(group) |> 
+  drop_na(oxy) |> 
+  rename(oxygen = oxy) %>%
+  mutate(tot_weight = rowSums(select(., ends_with('_tot'))),  
+         benthic_weight = amphipoda_tot + bivalvia_tot + gadus_morhua_tot +
+           gobiidae_tot + mysidae_tot + non_bio_tot + 
+           other_crustacea_tot + other_tot + other_pisces_tot + platichthys_flesus_tot +
+           polychaeta_tot + saduria_entomon_tot) |> 
+  rename(saduria_weight = saduria_entomon_tot,
+         flounder_density = kg_km2_flounder,
+         large_cod_density = kg_km2_large_cod,
+         small_cod_density = kg_km2_small_cod) |> 
+  mutate(tot_rel_weight = tot_weight / (pred_weight_g - tot_weight), 
+         benthic_rel_weight = benthic_weight / (pred_weight_g - tot_weight),
+         saduria_rel_weight = saduria_weight / (pred_weight_g - tot_weight)) |> 
+  dplyr::select(-ends_with("_tot")) |> 
+  dplyr::select(-predator_latin_name, -date) |> 
+  # Add small constant to large cod density because we want to take the log of it
+  mutate(large_cod_density = ifelse(large_cod_density == 0,
+                                    min(filter(d, kg_km2_large_cod > 0)$kg_km2_large_cod)*0.5,
+                                    large_cod_density),
+         flounder_density = ifelse(flounder_density == 0,
+                                   min(filter(d, kg_km2_flounder > 0)$kg_km2_flounder)*0.5,
+                                   flounder_density),
+         small_cod_density = ifelse(small_cod_density == 0,
+                                    min(filter(d, kg_km2_small_cod > 0)$kg_km2_small_cod)*0.5,
+                                    small_cod_density)) |> 
+  # scale variables
+  mutate(fyear = as.factor(year),
+         fquarter = as.factor(quarter),
+         fhaul_id = as.factor(haul_id),
+         depth_sc = as.numeric(scale(depth)),
+         oxygen_sc = as.numeric(scale(oxygen)),
+         density_saduria_sc = as.numeric(scale(density_saduria)),
+         flounder_density_sc = as.numeric(scale(log(flounder_density))),
+         large_cod_density_sc = as.numeric(scale(log(large_cod_density))),
+         small_cod_density_sc = as.numeric(scale(log(small_cod_density)))) |> 
+  # Scale length by group ..
+  mutate(pred_length_cm_sc = as.numeric(scale(pred_length_cm)),
+         .by = group)
+```
+
+```{r}
+# Calculate weights
+
+# The reason to round here is because data come as per hour
+d <- d |> 
+  mutate(sampled_n = n(), .by = c(haul_id, group)) |> 
+  mutate(f_weight = round(n_catch_flounder) / sampled_n,
+         sc_weight = round(n_catch_small_cod) / sampled_n,
+         lc_weight = round(n_catch_large_cod) / sampled_n) |> 
+  mutate(f_weight = f_weight/mean(f_weight),
+         sc_weight = sc_weight/mean(sc_weight),
+         lc_weight = lc_weight/mean(lc_weight))
+```
+
+## Main models
+
+```{r}
+coef_sad <- list()
+coef_sad_wgt <- list()
+coef_ben <- list()
+coef_ben_wgt <- list()
+
+for(i in unique(d$group)) {
+  
+  dd <- filter(d, group == i)
+  
+  if(i == "flounder"){
+    weigths <- dd$f_weight
+  } else if(i == "small cod"){
+    weigths <- dd$sc_weight
+  } else if(i == "large cod"){
+    weigths <- dd$lc_weight
+  }
+  
+  mesh <- make_mesh(dd,
+                    xy_cols = c("X", "Y"),
+                    cutoff = 5)
+
+  ggplot() +
+    inlabru::gg(mesh$mesh) +
+    coord_fixed() +
+    geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
+    annotate("text", -Inf, Inf, label = paste("n knots =", mesh$mesh$n), hjust = -0.3, vjust = 3) + 
+    labs(x = "Easting (km)", y = "Northing (km)")
+  
+  
+  
+  # Saduria model
+  
+    m_sad <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + pred_length_cm_sc +
+                    small_cod_density_sc*density_saduria_sc + 
+                    flounder_density_sc*density_saduria_sc,
+                    data = dd,
+                    mesh = mesh,
+                    family = tweedie(),
+                    spatiotemporal = "iid", 
+                    spatial = "on",
+                    time = "year")
+  
+    sanity(m_sad)
+      
+    m_sad_wgt <- sdmTMB(saduria_rel_weight ~ 0 + fyear + fquarter + depth_sc + oxygen_sc + pred_length_cm_sc +
+                    small_cod_density_sc*density_saduria_sc + 
+                    flounder_density_sc*density_saduria_sc,
+                        data = dd,
+                        mesh = mesh,
+                        family = tweedie(),
+                        weights = weigths, 
+                        spatiotemporal = "iid", 
+                        spatial = "on",
+                        time = "year")
+    sanity(m_sad_wgt)
+    
+    
+    # Benthic model
+    
+    if(unique(dd$group) %in% c("large cod", "small cod")) {
+      
+      m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                        small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc + pred_length_cm_sc,
+                      data = dd,
+                      mesh = mesh,
+                      family = tweedie(),
+                      spatiotemporal = "iid", 
+                      spatial = "off",
+                      time = "year")
+      
+      sanity(m_ben)
+      
+      m_ben_wgt <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                        small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc + pred_length_cm_sc,
+                          data = dd,
+                          mesh = mesh,
+                          family = tweedie(),
+                          weights = weigths, 
+                          spatiotemporal = "iid", 
+                          spatial = "off",
+                          time = "year")
+      
+      sanity(m_ben_wgt)
+  
+     } else { 
+       m_ben <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                         small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc + pred_length_cm_sc,
+                       data = dd,
+                       mesh = mesh,
+                       family = tweedie(),
+                       spatiotemporal = "iid", 
+                       spatial = "on",
+                       time = "year")
+       
+       sanity(m_ben)
+       
+       m_ben_wgt <- sdmTMB(benthic_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                         small_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc + pred_length_cm_sc,
+                           data = dd,
+                           mesh = mesh,
+                           family = tweedie(),
+                           weights = weigths, 
+                           spatiotemporal = "IID", 
+                           spatial = "on",
+                           time = "year")
+       
+      sanity(m_ben_wgt)
+       
+     }
+  
+       
+       
+  # Coefficients
+  coefs_sad <- bind_rows(tidy(m_sad, effects = "fixed", conf.int = TRUE)) |> 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coefs_sad_wgt <- bind_rows(tidy(m_sad_wgt, effects = "fixed", conf.int = TRUE)) |> 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coefs_ben <- bind_rows(tidy(m_ben, effects = "fixed", conf.int = TRUE)) |> 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coefs_ben_wgt <- bind_rows(tidy(m_ben_wgt, effects = "fixed", conf.int = TRUE)) |> 
+    mutate(species = "Cod (m)",
+           response = "Saduria",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig))
+  
+  coef_sad[[i]] <- coefs_sad |> mutate(group = i)
+  coef_sad_wgt[[i]] <- coefs_sad_wgt |> mutate(group = i)
+  coef_ben[[i]] <- coefs_ben |> mutate(group = i)
+  coef_ben_wgt[[i]] <- coefs_ben_wgt |> mutate(group = i)
+
+}
+```
+
+Large cod 
+
+```{r}
+coef_tot <- list()
+
+  dd <- filter(d, group == "large cod")
+  
+  mesh <- make_mesh(dd,
+                    xy_cols = c("X", "Y"),
+                    cutoff = 5)
+
+  # Total model
+  m_tot <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                    large_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc + pred_length_cm_sc,
+                  data = dd,
+                  mesh = mesh,
+                  family = tweedie(),
+                  spatiotemporal = "iid", 
+                  spatial = "off",
+                  time = "year")
+  
+  m_tot_wgt <- sdmTMB(tot_rel_weight ~ 0 + fyear + fquarter + depth_sc + 
+                    large_cod_density_sc*oxygen_sc + flounder_density_sc*oxygen_sc + pred_length_cm_sc,
+                  data = dd,
+                  mesh = mesh,
+                  family = tweedie(),
+                  weights = dd$lc_weight,
+                  spatiotemporal = "iid", 
+                  spatial = "off",
+                  time = "year")
+  
+  coefs_tot <- tidy(m_tot, effects = "fixed", conf.int = TRUE) |> 
+    mutate(response = "Total",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig)) |> 
+    mutate(group = "large cod")
+  
+  coefs_tot_wgt <- tidy(m_tot_wgt, effects = "fixed", conf.int = TRUE) |> 
+    mutate(response = "Total",
+           sig = ifelse(estimate > 0 & conf.low > 0, "Y", "N"),
+           sig = ifelse(estimate < 0 & conf.high < 0, "Y", sig)) |> 
+    mutate(group = "large cod")
+```
+
+## Make dataframes
+
+```{r}
+coef_df <- bind_rows(bind_rows(coef_sad) |> mutate(model = "Saduria", source = "un-weighted"),
+                     bind_rows(coef_sad_wgt) |> mutate(model = "Saduria", source = "weighted"),
+                     bind_rows(coef_ben) |> mutate(model = "Benthos", source = "un-weighted"),
+                     bind_rows(coef_ben_wgt) |> mutate(model = "Benthos", source = "weighted"),
+                     bind_rows(coefs_tot) |> mutate(model = "Total prey", source = "un-weighted"),
+                     bind_rows(coefs_tot_wgt) |> mutate(model = "Total prey", source = "weighted"))
+```
+
+## Plot coefficients
+
+```{r}
+#| fig-height: 10
+
+pal <- (brewer.pal(n = 11, name = "RdYlBu")[c(11, 4, 1)])
+
+coef_df2 <- coef_df |>
+  filter(!grepl('year', term)) |>
+  filter(!grepl('quarter', term)) |>
+  mutate(term = str_remove_all(term, "_sc"),
+         term = str_remove_all(term, "density"),
+         term = str_replace_all(term, "_", " "),
+         term = str_replace(term, ":", "×"),
+         term = str_to_sentence(term),
+         group = str_to_sentence(group),
+         term = ifelse(term == "Small cod ×oxygen", "Small cod × oxygen", term),
+         term = ifelse(term == "Large cod ×oxygen", "Large cod × oxygen", term),
+         term = ifelse(term == "Oxygen×flounder ", "Oxygen × flounder", term),
+         term = ifelse(term == " Saduria×flounder ", "Saduria × flounder", term),
+         term = ifelse(term == "Small cod ×oxygen", "Small cod × oxygen", term),
+         model2 = ifelse(model == "Saduria", "Prey=Saduria", NA),
+         model2 = ifelse(model == "Benthos", "Prey=Benthic prey", model2),
+         model2 = ifelse(model == "Total prey", "Prey=Total prey", model2),
+         sig2 = ifelse(sig == "Y", "N", "Y"),
+         term = ifelse(term == "Pred length cm", "Predator length", term),
+         group2 = paste0("Predator=", group))
+
+# coef_df2 <- coef_df2 |> 
+#   mutate(term = ifelse(term == "Oxygen",
+#                        paste0("<span style=\"color: ", "tomato3", "\">", term, "</span>"),
+#                        term))
+
+p1 <- 
+  coef_df2 |>
+  filter(model == "Saduria") |> 
+  ggplot(aes(estimate, term, color = source, alpha = sig2)) +
+  geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
+  facet_grid(factor(model2, levels = c("Prey=Saduria", "Prey=Benthic prey")) ~ 
+               factor(group2, levels = c("Predator=Flounder", "Predator=Small cod", "Predator=Large cod"))) + 
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+  geom_point(position = position_dodge(width = 0.5), size = 2) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
+                position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c(1, 0.4)) +
+  scale_color_manual(values = pal[c(1, 3)]) +
+  labs(x = "Estimate", y = "", alpha = "95% CI crossing 0", color = "Model") +
+  theme(legend.position = "bottom", 
+        legend.direction = "vertical",
+        axis.title.x = element_blank(),
+        axis.text.y = ggtext::element_markdown()) +
+  guides(color = "none",
+         alpha = "none") +
+  NULL
+
+p2 <- 
+  coef_df2 |> 
+  filter(model == "Benthos") |> 
+  ggplot(aes(estimate, term, color = source, alpha = sig2)) +
+  geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
+  facet_grid(factor(model2, levels = c("Prey=Saduria", "Prey=Benthic prey")) ~ 
+               factor(group2, levels = c("Predator=Flounder", "Predator=Small cod", "Predator=Large cod"))) + 
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+  geom_point(position = position_dodge(width = 0.5), size = 2) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
+                position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c(1, 0.4)) +
+  scale_color_manual(values = pal[c(1, 3)]) +
+  labs(x = "Estimate", y = "", alpha = "95% CI crossing 0", color = "Model") +
+  theme(legend.position = "bottom", 
+        legend.direction = "vertical",
+        strip.text.x.top = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.y = ggtext::element_markdown()) +
+  guides(color = "none",
+         alpha = "none") +
+  NULL
+
+p3 <- 
+  coef_df2 |> 
+  filter(model == "Total prey") |> 
+  ggplot(aes(estimate, term, color = source, alpha = sig2)) +
+  geom_stripped_rows(aes(y = term), inherit.aes = FALSE) +
+  facet_grid(model2 ~ 
+               factor(group2, levels = c("Predator=Large cod"))) + 
+  geom_vline(xintercept = 0, linetype = 2, alpha = 0.5, color = "gray10", linewidth = 0.2) +
+  geom_point(position = position_dodge(width = 0.5), size = 2) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0,
+                position = position_dodge(width = 0.5)) +
+  scale_alpha_manual(values = c(1, 0.4)) +
+  scale_color_manual(values = pal[c(1, 3)]) +
+  labs(x = "Estimate", y = "", alpha = "95% CI crossing 0", color = "Model") +
+  theme(legend.position = "left", 
+        legend.direction = "vertical",
+        strip.text.x.top = element_blank(),
+        axis.text.y = ggtext::element_markdown()) +
+  guides(alpha = guide_legend(title.position = "top", title.hjust = 0.5)) +
+  NULL
+
+p3b <- (plot_spacer() | p3) & plot_layout(widths = c(1, 3.2))
+
+(p1 / p2 / (p3b)) +
+  plot_annotation(tag_levels = "a") +
+  plot_layout(axes = "collect") & coord_cartesian(xlim = c(min(coef_df2$conf.low), max(coef_df2$conf.high)))
+
+ggsave(paste0(home, "/figures/supp/coefs_weighted_sens.pdf"), width = 18, height = 22, units = "cm")
+```

@@ -321,20 +321,13 @@ stom <- stom |>
 # trawl_surveys_cod <- read.csv("data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L) COD.csv", sep = ";")
 # trawl_surveys_fle <- read.csv("data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L) FLE.csv", sep = ";")
 
-trawl_surveys_cod <- read_delim(paste0(home, "/data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L) COD.csv"), delim = ";")
-trawl_surveys_fle <- read_delim(paste0(home, "/data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L) FLE.csv"), delim = ";")
+trawl_surveys_cod <- read.csv2(paste0(home, "/data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L) COD.csv"), sep = ";")
+trawl_surveys_fle <- read.csv2(paste0(home, "/data/stomach-data/BITS/trawl/Trawl Surveys Zincl (L) FLE.csv"), sep = ";")
 
 # Combine for the two species, filter and clean!
 trawl_data <- rbind(trawl_surveys_cod, trawl_surveys_fle) |>
   clean_names() |>
-  mutate(swept_area = as.numeric(gsub(",", "\\.", swept_area)),
-         kg_hour = as.numeric(gsub(",", "\\.", kg_hour)),
-         dist = as.numeric(gsub(",", "\\.", dist))) |> 
   as.data.frame()
-
-str(trawl_data)
-
-sort(unique(trawl_data$lat)) |> head(20)
 
 # For these coordinates, we can use the function Fede provided:
 format.position <- function(x){
@@ -390,14 +383,25 @@ library(patchwork)
 ## Biological data
 
 ```{r read bio data}
-trawl_surveys_s_cod <- read_delim(paste0(home, "/data/stomach-data/BITS/biological/Trawl Surveys (S) COD.csv"), delim = ";")
-trawl_surveys_s_flounder <- read_delim(paste0(home, "/data/stomach-data/BITS/biological/Trawl Surveys (S) FLE.csv"), delim = ";")
+trawl_surveys_s_cod <- read.csv2(paste0(home, "/data/stomach-data/BITS/biological/Trawl Surveys (S) COD.csv"))
+trawl_surveys_s_flounder <- read.csv2(paste0(home, "/data/stomach-data/BITS/biological/Trawl Surveys (S) FLE.csv"))
 
 trawl_surveys_s_cod$Species <- "Cod"
 trawl_surveys_s_flounder$Species <- "Flounder"
 
 bio_data <- bind_rows(trawl_surveys_s_cod, trawl_surveys_s_flounder) |>
   clean_names()
+
+ggplot(bio_data, aes(lengthcl/10, weight)) +  
+  geom_point() +
+  facet_wrap(~species, ncol = 1)
+
+# Estimate length-weight conversion
+af <- as.numeric(exp(coef(lm(log(weight) ~ log(lengthcl/10), data = bio_data |> filter(species == "Flounder")))[1]))
+bf <- as.numeric(coef(lm(log(weight) ~ log(lengthcl/10), data = bio_data |> filter(species == "Flounder")))[2])
+
+ac <- as.numeric(exp(coef(lm(log(weight) ~ log(lengthcl/10), data = bio_data |> filter(species == "Cod")))[1]))
+bc <- as.numeric(coef(lm(log(weight) ~ log(lengthcl/10), data = bio_data |> filter(species == "Cod")))[2])
 ```
 
 # Join trawl and biological data, and then stomach
@@ -414,10 +418,7 @@ bio_data <- bio_data |> mutate(predator_code = ifelse(species == "Cod", "COD", "
 unique(is.na(trawl_data[, c("year", "quarter", "haul")]))
 
 # Go ahead
-trawl_data$haul_id <- paste(trawl_data$year,
-                            trawl_data$quarter,
-                            trawl_data$haul,
-                            sep = "_")
+trawl_data$haul_id <- paste(trawl_data$year, trawl_data$quarter, trawl_data$haul, sep = "_")
 
 # Should be a unique ID per length and predator code
 trawl_data |> 
@@ -435,43 +436,48 @@ trawl_data_unique_haul <- trawl_data |>
 trawl_data_cod <- trawl_data |> 
   filter(!validity == "I") |> 
   filter(predator_code == "COD") |> 
-  mutate(kg = kg_hour * (duration / 60),
-         kg_km2 = kg / swept_area) |> # make it biomass density
-  drop_na(kg_km2) |> 
-  mutate(size_group = ifelse(lengthcl >= 100 & lengthcl < 250, "small", NA),
-         size_group = ifelse(lengthcl >= 250 & lengthcl < 500, "medium", size_group)) |> 
-  group_by(haul_id, size_group) |> 
-  summarise(kg_km2 = sum(kg_km2)) |> 
-  ungroup() |> 
-  filter(size_group %in% c("small", "medium")) |> # could also drop NA here..
-  pivot_wider(names_from = size_group, values_from = kg_km2) |> 
-  rename(mcod_kg_km2 = medium,
-         scod_kg_km2 = small) |> 
-  mutate(mcod_kg_km2 = replace_na(mcod_kg_km2, 0),
-         scod_kg_km2 = replace_na(scod_kg_km2, 0))
-
+  mutate(no = no_hour * (duration / 60),
+         weight = (ac*(lengthcl/10)^bc) / 1000,
+         kg_per_l = no * weight,
+         kg_per_l_km2 = kg_per_l/swept_area) |> 
+  mutate(group = ifelse(lengthcl >= 100 & lengthcl < 250, "small_cod", NA),
+         group = ifelse(lengthcl >= 250 & lengthcl < 500, "large_cod", group)) |> 
+  summarise(kg_km2 = sum(kg_per_l_km2),
+            n_catch = sum(no), .by = c(haul_id, group)) |> 
+  filter(group %in% c("small_cod", "large_cod")) |>
+  pivot_wider(names_from = group, values_from = c(kg_km2, n_catch)) |> 
+  mutate(across(
+    c(kg_km2_small_cod, kg_km2_large_cod, n_catch_small_cod, n_catch_large_cod),
+    ~replace_na(., 0)
+  ))
+  
 # Ok, so because this is catches (no hauls with no fish... the only reason I have 0 catches is if one of the size-groups doesn't have a catch!)
 
 # Check with a haul_id
-trawl_data |> 
-  filter(predator_code == "COD" & haul_id == "2015_1_20") 
-
-trawl_data_cod |> filter(haul_id == "2015_1_20")
+# trawl_data |> 
+#   filter(predator_code == "COD" & haul_id == "2015_1_20") 
+# 
+# trawl_data_cod |> filter(haul_id == "2015_1_20")
 
 # Now do the same for flounder and join with the cod data, then with haul data!
 # Different code because we do not need to worry about size
 trawl_data_fle <- trawl_data |> 
   filter(!validity == "I") |> 
   filter(predator_code == "FLE") |> 
-  mutate(kg = kg_hour * (duration / 60),
-         kg_km2 = kg / swept_area) |> # make it biomass density
-  #drop_na(kg_km2) |> 
-  mutate(size_group = ifelse(lengthcl >= 100, "benthic", "all")) |> 
-  group_by(haul_id, size_group) |> 
-  summarise(fle_kg_km2 = sum(kg_km2)) |> 
-  filter(size_group == "benthic")
-
-
+  mutate(no = no_hour * (duration / 60),
+         weight = (af*(lengthcl/10)^bf) / 1000,
+         kg_per_l = no * weight,
+         kg_per_l_km2 = kg_per_l/swept_area) |> 
+  mutate(group = ifelse(lengthcl >= 100, "flounder", NA)) |> 
+  summarise(kg_km2 = sum(kg_per_l_km2),
+            n_catch = sum(no), .by = c(haul_id, group)) |> 
+  filter(group %in% c("flounder")) |>
+  pivot_wider(names_from = group, values_from = c(kg_km2, n_catch)) |> 
+  mutate(across(
+    c(kg_km2_flounder, n_catch_flounder),
+    ~replace_na(., 0)
+  ))
+  
 # Add back summaries to dataframe of unique hauls
 trawl_data_unique_haul <- trawl_data_unique_haul |> filter(!validity == "I")
 
@@ -487,14 +493,15 @@ trawl_data_wide <- left_join(trawl_data_wide, trawl_data_fle, by = "haul_id")
 # unique(is.na(trawl_data_cod))
 
 # Ok, if there are NAs now in cod or flounder density... why is that? because it wasn't caught (both species are not always caught)
-na_test <- trawl_data_wide |> filter(is.na(fle_kg_km2)) |> dplyr::select(haul_id) |> head(10)
+na_test <- trawl_data_wide |> filter(is.na(kg_km2_flounder)) |> dplyr::select(haul_id) |> head(10)
 trawl_data |> filter(species == "flounder" & haul_id == head(na_test$haul_id, 1))
 
 # Change the NA's to 0's... 
 trawl_data_wide <- trawl_data_wide |> 
-  mutate(scod_kg_km2 = replace_na(scod_kg_km2, 0),
-         mcod_kg_km2 = replace_na(mcod_kg_km2, 0),
-         fle_kg_km2 = replace_na(fle_kg_km2, 0))
+  mutate(across(
+    c(kg_km2_small_cod, kg_km2_large_cod, n_catch_small_cod, n_catch_large_cod, kg_km2_flounder, n_catch_flounder),
+    ~replace_na(., 0)
+  ))
 
 # Now add in the same ID in the bio_data
 unique(is.na(bio_data[, c("year", "quarter", "haul")]))
@@ -520,7 +527,9 @@ unique(is.na(bio_data[, common_cols]))
 # Trawl data has some NA's in the common columns. Select only the important columns
 colnames(trawl_data_wide)[!colnames(trawl_data_wide) %in% colnames(bio_data)]
 
-trawl_data_wide <- trawl_data_wide |> dplyr::select(haul_id, fle_kg_km2, mcod_kg_km2, scod_kg_km2, lat, lon, bottom_depth, X, Y, smhi_serial_no)
+trawl_data_wide <- trawl_data_wide |>
+  dplyr::select(haul_id, kg_km2_small_cod, kg_km2_large_cod, n_catch_small_cod, n_catch_large_cod,
+                kg_km2_flounder, n_catch_flounder, lat, lon, bottom_depth, X, Y, smhi_serial_no)
 
 bio_data <- left_join(bio_data, trawl_data_wide, by = "haul_id")
 ```
@@ -592,13 +601,15 @@ unique(is.na(stom[, common_cols]))
 unique(is.na(bio_data[, common_cols]))
 
 # Join!
-dat <- left_join(stom |> dplyr::select("pred_id", "data_id", "pred_weight", "pred_weight_g", "pred_size", "pred_size_cm",
-                                        "gall_bladder", "stomach_state", "predator_code", "prey_weight",
-                                        "prey_nr", "stage_digestion", "comment", "prey_size", "prey_sp_code", "length_code", 
-                                        "n_empty", "n_with_food", "n_regurgitated"),
-                 bio_data |> dplyr::select("haul_id", "fle_kg_km2", "mcod_kg_km2", "scod_kg_km2", "year", "quarter", 
-                                            "lat", "lon", "bottom_depth", "pred_id", "species", "lengthcl",
-                                            "weight", "size", "subdiv", "date", "month", "X", "Y", "smhi_serial_no"))
+dat <- left_join(stom |> dplyr::select(pred_id, data_id, pred_weight, pred_weight_g, pred_size, pred_size_cm,
+                                       gall_bladder, stomach_state, predator_code, prey_weight,
+                                       prey_nr, stage_digestion, comment, prey_size, prey_sp_code, length_code, 
+                                       n_empty, n_with_food, n_regurgitated),
+                 
+                 bio_data |> dplyr::select(haul_id, kg_km2_small_cod, kg_km2_large_cod, n_catch_small_cod,
+                                           n_catch_large_cod, kg_km2_flounder, n_catch_flounder, year, quarter, 
+                                           lat, lon, bottom_depth, pred_id, species, lengthcl,
+                                           weight, size, subdiv, date, month, X, Y, smhi_serial_no))
 
 length(unique(dat$pred_id))
 length(unique(stom$pred_id))
@@ -637,7 +648,6 @@ d2 <- d |>
 
 nrow(d2)
 
-# FIXME
 # Remove regurgitated stomachs 
 d2 |>
   summarise(n = n(), .by = c(year, n_regurgitated)) |> 
@@ -647,7 +657,6 @@ d2 <- d2 |>
   # Only removing the certain regurgitated stomachs
   mutate(n_regurgitated = replace_na(n_regurgitated, 0)) |>
   filter(n_regurgitated == 0)
-
 
 # Now we can plot prop empty stomachs. It seems NA prey weight can be both that the weight is missing, and that there is no prey
 d2 |>
@@ -899,27 +908,22 @@ d3 <- d3 |>
 
 # Check catches
 d3 |> 
-  distinct(mcod_kg_km2) |> 
-  arrange(desc(mcod_kg_km2)) |>
+  distinct(kg_km2_large_cod) |> 
+  arrange(desc(kg_km2_large_cod)) |>
   as.data.frame() |> 
   head(20)
 
 d3 |> 
-  distinct(scod_kg_km2) |> 
-  arrange(desc(scod_kg_km2)) |>
+  distinct(kg_km2_small_cod) |> 
+  arrange(desc(kg_km2_small_cod)) |>
   as.data.frame() |> 
   head(20)
 
 d3 |> 
-  distinct(fle_kg_km2) |> 
-  arrange(desc(fle_kg_km2)) |>
+  distinct(kg_km2_flounder) |> 
+  arrange(desc(kg_km2_flounder)) |>
   as.data.frame() |> 
   head(20)
-
-d4 <- d3 |> 
-  filter(mcod_kg_km2 < 15000,
-         scod_kg_km2 < 15000,
-         fle_kg_km2 < 15000)
 
 # How many unique predator lengths per sample (fish)?
 d3 |> 
