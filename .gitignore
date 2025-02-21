@@ -86,4 +86,5 @@ R/analysis/density_spatial_trend_models.html
 */test.R
 
 # raw data
-
+R/prepare-data/for-mich.R
+data/clean/mich_aggregated_stomach_data.txt
