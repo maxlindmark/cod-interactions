@@ -34,6 +34,7 @@ library(ggstats)
 library(ggh4x)
 library(viridis)
 library(sdmTMBextra)
+library(ggcorrplot)
 
 # Source map-plot
 #source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
@@ -177,7 +178,6 @@ d_cor <- d |>
 
 corr <- round(cor(d_cor), 1)
 
-library(ggcorrplot)
 ggcorrplot(corr, hc.order = TRUE, type = "lower", lab = TRUE, lab_size = 2.5) +
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.3))
@@ -247,7 +247,6 @@ for(i in unique(d$group)) {
     inlabru::gg(mesh$mesh) +
     coord_fixed() +
     geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
-    annotate("text", -Inf, Inf, label = paste("n knots =", mesh$mesh$n), hjust = -0.3, vjust = 3) + 
     labs(x = "Easting (km)", y = "Northing (km)")
   
   ggsave(paste0(home, "/figures/supp/mesh_", i, ".pdf"), width = 17, height = 17, units = "cm")
