@@ -29,8 +29,17 @@ vignettes/*.pdf
 
 # Large data files and data we cannot share yet but not clean data for analysis
 data/*
+# Allow specific subfolders and their contents
 !data/clean/
-data/clean/ctd_trawl_joined.csv
+!data/clean/**
+!data/shapefiles/
+!data/shapefiles/**
+!data/stomach-data/
+data/stomach-data/*
+!data/stomach-data/BITS/
+data/stomach-data/BITS/*
+!data/stomach-data/BITS/trawl/
+!data/stomach-data/BITS/trawl/**
 
 data/clean/full_stomach_data.csv
 data/clean/full_stomach_data_x.csv
@@ -88,3 +97,11 @@ R/analysis/density_spatial_trend_models.html
 # raw data
 R/prepare-data/for-mich.R
 data/clean/mich_aggregated_stomach_data.txt
+
+# supporting scripts
+R/supp-analysis/boot-overlap-SA-og.R
+R/supp-analysis/boot-overlap-trueOG.R
+R/supp-analysis/boot-overlap.R
+R/supp-analysis/energy_density_calculations.R
+R/supp-analysis/test_inla_renv.R
+data/clean/hello_wtf.csv
