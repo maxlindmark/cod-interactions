@@ -311,6 +311,14 @@ stom <- stom |>
   dplyr::select(-sqare)
 
 # Good for now. Now read the bottom trawl data and the biological data from the trawls
+stom |> as.data.frame()
+  
+stom |> summarise(n = n(), .by = c(size_group_code))
+stom |> summarise(n = n(), .by = c(pred_size)) |> arrange(desc(n))
+stom |> summarise(n = n(), .by = c(pred_weight)) |> arrange(desc(n))
+stom |> summarise(n = n(), .by = c(predator_gutted_weight)) |> arrange(desc(n))
+
+# These size-variables are very rarely in the stomach data, need to link that in from the biological data from the trawl
 ```
 
 ## Trawl
@@ -629,11 +637,11 @@ Clean data!
 ```{r clean}
 d <- dat
 
-# Scale up so 1 row = 1 pred and prey. Assume NA is 1. Remove 0 prey nr...
+# Scale up so 1 row = 1 pred and prey. Assume NA is 1 (pers comm. Kate Nadolna). Remove 0 prey nr...
 d <- d |>
   mutate(prey_nr = replace_na(prey_nr, 1),
          prey_nr = as.integer(prey_nr)) |> 
-  tidylog::filter(prey_nr > 0) # FIXME
+  tidylog::filter(prey_nr > 0) # why would it be 0...
 
 # Replicate rows prey_no times!
 nrow(d)
@@ -646,9 +654,13 @@ d2 <- d |>
          prey_weight_type = ifelse(prey_number_type == "un_aggregated_from_average", "pooled", "unique_id")) |> 
   uncount(prey_nr)
 
-nrow(d2)
-
 # Remove regurgitated stomachs 
+ggplot(d2, aes(as.factor(n_regurgitated))) +
+  geom_bar(stat = "count")
+
+ggplot(d2, aes(as.factor(stomach_state))) +
+  geom_bar(stat = "count")
+
 d2 |>
   summarise(n = n(), .by = c(year, n_regurgitated)) |> 
   arrange(year)
@@ -657,6 +669,40 @@ d2 <- d2 |>
   # Only removing the certain regurgitated stomachs
   mutate(n_regurgitated = replace_na(n_regurgitated, 0)) |>
   filter(n_regurgitated == 0)
+
+# Can I trust the n_empty and n_with_food columns? So many NAs + there are prey_weights recorded when n_empty == 1, even taking into gall_bladder and n_regurgitated...
+# names(d2)
+# unique(d2$n_empty)
+# unique(d2$n_with_food)
+# 
+# ggplot(d2, aes(as.factor(n_empty))) +
+#   geom_bar(stat = "count")
+# 
+# ggplot(d2, aes(as.factor(n_with_food))) +
+#   geom_bar(stat = "count")
+# 
+d2 |>
+  filter(n_empty == 1) |>
+  distinct(prey_weight_g, gall_bladder, n_regurgitated)
+
+# If stomach is empty and gall bladder is 1 or 2, it really is regurgitated
+# ggplot(d2, aes(gall_bladder)) +
+#   geom_bar(stat = "count")
+# 
+# t <- d2 |>
+#   summarise(sum_prey = sum(prey_weight_g, na.rm = TRUE), .by = pred_id)
+# 
+# tt <- t |> 
+#   left_join(d2 |>
+#               distinct(pred_id, .keep_all = TRUE) |> 
+#               dplyr::select(pred_id, gall_bladder)) |> 
+#   mutate(gall_bladder = as.numeric(gall_bladder),
+#          gall_bladder = replace_na(gall_bladder, -9))
+# 
+# gb <- tt |> filter(sum_prey == 0 & gall_bladder %in% c(1, 2))
+#   
+# d2 <- d2 |> 
+#   filter(!pred_id %in% gb$pred_id)
 
 # Now we can plot prop empty stomachs. It seems NA prey weight can be both that the weight is missing, and that there is no prey
 d2 |>
@@ -672,22 +718,52 @@ d2 |>
   geom_histogram(stat = "count") +
   theme(axis.text.x = element_text(angle = 90))
 
-d2 |>
-  filter(is.na(prey_weight_g)) |> 
-  ggplot(aes(factor(n_regurgitated))) + 
-  geom_histogram(stat = "count") +
-  theme(axis.text.x = element_text(angle = 90))
+# If prey weight AND prey species is NA, set prey weight to 0. That is an empty stomach
+# Here are some tests on that. 
+# A filter that contains only empty stomachs
+d2 |> 
+  filter(is.na(prey_sp_code) & is.na(prey_weight_g)) |> 
+  as.data.frame() |> 
+  arrange(pred_id)
 
-# If prey weight AND prey species is NA, set prey weight to 0. If prey are present I can't set weight to zero
-# Check first if there are any 0 weights with prey present. 
-d2 |> filter(prey_weight_g == 0) |> as.data.frame()
+# We see though that even in the filter where prey species, prey weight and prey length is NA, there are some predators (around 30),
+# where the column n_empty is 0 or NA, when it ought to be 1
+d2 |> 
+  filter(is.na(prey_sp_code) & is.na(prey_weight_g) & is.na(prey_length_cm)) |> 
+  as.data.frame() |> 
+  summarise(n = n(), .by = n_empty)
 
-# These are not 
-d2 |> filter(prey_weight_g == 0) |> distinct(n_regurgitated)
+# Here we also see that some IDs are repeated
+d2 |> 
+  filter(is.na(prey_sp_code) & is.na(prey_weight_g)) |> 
+  as.data.frame() |> 
+  summarise(n = n(), .by = pred_id) |> 
+  distinct(n)
+
+d2 |> 
+  filter(is.na(prey_sp_code) & is.na(prey_weight_g)) |> 
+  as.data.frame() |> 
+  mutate(n = n(), .by = pred_id) |> 
+  filter(n > 1) |> 
+  arrange(pred_id)
+
+# Here I find that 75% of stomachs are empty in the sense that the colunm n_empty is 1
+t <- d2 |>
+  distinct(pred_id, .keep_all = TRUE) |> 
+  filter(n_empty == 1)
+
+t <- d2 |>
+  summarise(sum = sum(prey_weight_g, na.rm = TRUE), .by = pred_id) |> 
+  filter(sum == 0)
+
+# If prey are present I can't set weight to zero... (something was there, right?!)
+# Check first if there are any 0 weights
+d2 |> filter(!is.na(prey_sp_code) & prey_weight_g == 0) |> as.data.frame()
+d2 |> filter(is.na(prey_sp_code) & is.na(prey_weight_g)) |> as.data.frame()
 
 # Yes, some. Change their weights to NA because they are not true zeroes.
 # Pers. Com. with Kate suggests it may be rounding errors?
-# Set prey weight 0 if both prey species and prey weight is NA, because then I can calculate proportion empty stomachs manually using sum of prey weight per species
+# Set prey weight = 0 if both prey species and prey weight is NA, because then I can calculate proportion empty stomachs manually using sum of prey weight per species
 d2 <- d2 |> 
   mutate(prey_weight_g = ifelse(!is.na(prey_sp_code) & prey_weight_g == 0, NA, prey_weight_g),
          prey_weight_g = ifelse(is.na(prey_sp_code) & is.na(prey_weight_g), 0, prey_weight_g))
@@ -720,6 +796,11 @@ ids_to_remove <- d2 |>
 
 d2 <- d2 |> filter(!pred_id %in% ids_to_remove$pred_id)
 
+# Add back in (only once)
+# d2 <- bind_rows(ids_to_remove |>
+#                   dplyr::select(-n) |> 
+#                   distinct(pred_id, .keep_all = TRUE))
+
 # Are there any prey weight == NA where I have prey size?
 # Yes, but it's litter...
 d2 |> 
@@ -731,7 +812,21 @@ d2 |>
   filter(!is.na(prey_length_cm)) |> 
   as.data.frame()
 
-# Plot proportion empty stomachs by year, quarter and species
+# Plot proportion empty stomachs by year, quarter and species, in various ways and compare to estimate from n_empty
+# The reason for these extra checks is because on average only around 25% are empty, which is relatively low!
+d2 |> 
+  drop_na(prey_weight_g) |> # remember, these NA's are just missing weights, not empty stomachs!
+  summarise(tot_prey_weight = sum(prey_weight_g), .by = c(pred_id)) |> 
+  summarise(
+    total_count = n(),
+    zero_count = sum(tot_prey_weight == 0),
+    percent_zeroes = round(100 * zero_count / total_count, 2))
+
+t <- d2 |> 
+  drop_na(prey_weight_g) |> # remember, these NA's are just missing weights, not empty stomachs!
+  summarise(tot_prey_weight = sum(prey_weight_g), .by = c(pred_id)) |> 
+  filter(tot_prey_weight == 0)
+
 d2 |> 
   drop_na(prey_weight_g) |> # remember, these NA's are just missing weights, not empty stomachs!
   group_by(year, quarter, predator_code, pred_id) |>
@@ -759,7 +854,7 @@ unique(is.na(d2$pred_size))
 unique(is.na(d2$pred_size_cm))
 
 # d2 |>
-#   filter(!is.na(pred_weight)) |> 
+#   filter(!is.na(pred_weight)) |>
 #   ggplot(aes(pred_weight, weight)) + 
 #   geom_abline(color = "red") +
 #   geom_point()
@@ -781,7 +876,9 @@ d2 |>
   summary()
 
 # What about the size in the stomach file?
-d2 |> filter(is.na(pred_size) & is.na(pred_size_cm))
+d2 |>
+  filter(is.na(pred_size) & is.na(pred_size_cm)) |> 
+  as.data.frame()
 
 # Many NAs for pred_size and pred_size_cm, but not lengthcl
 d2 |>
@@ -789,6 +886,10 @@ d2 |>
   ggplot(aes(pred_size_cm, lengthcl)) +  
   geom_abline(color = "red") +
   geom_point()
+
+bio_data |> 
+  filter(pred_id == "2015_4_FLE_160") |> 
+  glimpse()
 
 d2 |>
   filter(!is.na(pred_size)) |> 

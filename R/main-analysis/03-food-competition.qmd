@@ -92,6 +92,9 @@ d <- d |>
   # Scale length by group ..
   mutate(pred_length_cm_sc = as.numeric(scale(pred_length_cm)),
          .by = group)
+
+t <- d |> filter(tot_rel_weight == 0)
+nrow(t)/nrow(d)
 ```
 
 Data overview

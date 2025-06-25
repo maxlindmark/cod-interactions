@@ -181,7 +181,7 @@ dat <- d_wide3 |>
 ### Depth
 
 ```{r add depth}
-dep_raster <- terra::rast(paste0(home, "/data/Mean depth natural colour (with land).nc"))
+dep_raster <- terra::rast("/Users/maxlindmark/Dropbox/Max work/R/pred-prey-overlap/data/covariates/depth/Mean depth natural colour (with land).nc")
 class(dep_raster)
 crs(dep_raster, proj = TRUE)
 
@@ -242,19 +242,6 @@ saduria_utm <- terra::project(saduria, sr)
 sad_df <- terra::as.data.frame(saduria_utm, xy = TRUE) |> 
   rename(X = x, Y = y)
 
-# plot_map + 
-#   geom_raster(data = sad_df, aes(x, y, fill = `FW_biomass_modelled_2015-2020`)) + 
-#   scale_fill_viridis(trans = "sqrt", 
-#                      name = "Saduria\nbiomass\ndensity (mg/m2)") +  
-#   theme(legend.position = "bottom") + 
-#   geom_sf() + 
-#   theme(axis.text.x = element_text(angle = 90),
-#         legend.position = "right",
-#         legend.direction = "vertical",
-#         legend.key.width = unit(0.4, "cm"),
-#         legend.key.height = unit(0.4, "cm")) +
-#   NULL
-
 ggplot(swe_coast_proj) + 
   xlim(xmin2, xmax2) +
   ylim(ymin2, ymax2) +
@@ -293,135 +280,68 @@ plot_map +
 
 ### Oxygen
 
-```{r}
-# For temperature and oxygen, we need to use two different rasters because we don't have the updated data in the re-analysis
-# TODO: check this later, might not be needed to split
-dat_1 <- dat |> filter(year < 2022)
-dat_2 <- dat |> filter(year >= 2022)
-```
+```{r oxygen}
+#| message: false
 
-Oxygen data for the whole time period was delayed on Copernicus, so for 2022 I had to use the forecast data. Slightly different format, hence I do oxygen in two steps.
+# Source:
+# https://data.marine.copernicus.eu/product/BALTICSEA_MULTIYEAR_BGC_003_012/download?dataset=cmems_mod_bal_bgc_my_P1M-m_202303
+# Print details
+print(nc_open("/Users/maxlindmark/Dropbox/Max work/R/spatial-metabolic-index/data/covariates/cmems_mod_bal_bgc_my_P1M-m_1742291088556.nc"))
 
-#### Old oxygen
+oxy_tibble <- tidync("/Users/maxlindmark/Dropbox/Max work/R/spatial-metabolic-index/data/covariates/cmems_mod_bal_bgc_my_P1M-m_1742291088556.nc") |>
+  hyper_tibble() |>
+  mutate(date = as_datetime(time, origin = "1970-01-01")) |>
+  mutate(
+    month = month(date),
+    day = day(date),
+    year = year(date),
+    month_year = paste(month, year, sep = "_"),
+    oxy = o2b * 0.0223909
+  )
 
-```{r extract oxygen}
-# tidync: https://ropensci.org/blog/2019/11/05/tidync/
-# tidyterra: https://dieghernan.github.io/tidyterra/reference/as_spatraster.html
-ncin <- nc_open(paste0(home, "/data/NEMO/cmems_mod_bal_bgc_my_P1D-m_1702039771395.nc"))
-print(ncin)
-
-oxy_tibble <- tidync(paste0(home, "/data/NEMO/cmems_mod_bal_bgc_my_P1D-m_1702039771395.nc")) |>
-  hyper_tibble() |> 
-  mutate(date = as.Date(time, origin = '1900-01-01')) |> 
-  mutate(month = month(date),
-         year = year(date)) |> 
-  mutate(oxy = o2b) |> 
-  summarise(oxy = mean(o2b), .by = c(lon, lat, year, month)) |> # average by month
-  mutate(oxy = oxy*0.0223909, # convert to ml/L
-         month_year = paste(month, year, sep = "_"))
-  
-# Loop, make raster and extract
+# Loop through all year combos, extract the temperatures at the data locations
 oxy_list <- list()
 
-for(i in unique(dat_1$month_year)) {
-  
-  dat_sub <- filter(dat_1, month_year == i)
+for (i in unique(dat$month_year)) {
+  d_sub <- filter(dat, month_year == i)
   oxy_tibble_sub <- filter(oxy_tibble, month_year == i)
-  
+
   # Convert to raster
-  oxy_raster <- as_spatraster(oxy_tibble_sub, xycols = 1:2,
-                              crs = "WGS84", digits = 3)
-  
+  ggplot(oxy_tibble_sub, aes(longitude, latitude)) +
+    geom_point(size = 0.1)
+
+  oxy_raster <- as_spatraster(oxy_tibble_sub,
+    xycols = 2:3,
+    crs = "WGS84", digits = 3
+  )
+
+  ggplot() +
+    geom_spatraster(data = oxy_raster$oxy, aes(fill = oxy)) +
+    scale_fill_viridis(option = "magma") +
+    ggtitle(i)
+
   # Extract from raster
-  dat_sub$oxy <- terra::extract(oxy_raster$oxy, dat_sub |> dplyr::select(lon, lat))$oxy
+  d_sub$oxy <- terra::extract(
+    oxy_raster$oxy,
+    d_sub |> dplyr::select(lon, lat)
+  )$oxy
 
   # Save
-  oxy_list[[i]] <- dat_sub
-  
+  oxy_list[[i]] <- d_sub
 }
 
-oxy_df <- bind_rows(oxy_list)
-```
-
-#### New oxygen
-
-Note this is from the projection, not the re-analysis because it hasn't been updated
-
-```{r new oxy q1}
-# tidync: https://ropensci.org/blog/2019/11/05/tidync/
-# tidyterra: https://dieghernan.github.io/tidyterra/reference/as_spatraster.html
-ncin_q1 <- nc_open(paste0(home, "/data/NEMO/BAL-ERGOM_BGC-MonthlyMeans-202202.nc"))
-print(ncin_q1)
-
-oxy_tibble_22q1 <- tidync(paste0(home, "/data/NEMO/BAL-ERGOM_BGC-MonthlyMeans-202202.nc")) |>
-  activate("o2b") |> 
-  hyper_tibble(select_var = "o2b") |> 
-  mutate(date = as.Date(time, origin = '1900-01-01')) |> 
-  mutate(month = month(date),
-         year = year(date)) |> 
-  mutate(oxy = o2b) |> 
-  summarise(oxy = mean(o2b), .by = c(lon, lat, year, month)) |> # average by month
-  mutate(oxy = oxy*0.0223909, # convert to ml/L
-         month_year = paste(month, year, sep = "_"))
-  
-
-ncin_q4 <- nc_open(paste0(home, "/data/NEMO/BAL-ERGOM_BGC-MonthlyMeans-202211.nc"))
-print(ncin_q4)
-
-oxy_tibble_22q4 <- tidync(paste0(home, "/data/NEMO/BAL-ERGOM_BGC-MonthlyMeans-202211.nc")) |>
-  activate("o2b") |> 
-  hyper_tibble(select_var = "o2b") |> 
-  mutate(date = as.Date(time, origin = '1900-01-01')) |> 
-  mutate(month = month(date),
-         year = year(date)) |> 
-  mutate(oxy = o2b) |> 
-  summarise(oxy = mean(o2b), .by = c(lon, lat, year, month)) |> # average by month
-  mutate(oxy = oxy*0.0223909, # convert to ml/L
-         month_year = paste(month, year, sep = "_"))
-
-
-oxy_tibble_new <- bind_rows(oxy_tibble_22q1, oxy_tibble_22q4)
-
-unique(oxy_tibble_new$month_year)
-
-# Loop, make raster and extract
-oxy_list <- list()
-
-dat_2 <- dat_2 |>
-  mutate(month_year = ifelse(month_year == "3_2022", "2_2022", month_year))
-
-oxy_list_new <- list()
-# No need to for loop or bind rows all new and loop the two quarters, also compares
-for(i in unique(dat_2$month_year)) {
-  
-  dat_sub <- filter(dat_2, month_year == i)
-  oxy_tibble_sub <- filter(oxy_tibble_new, month_year == i)
-  
-  # Convert to raster
-  oxy_raster <- as_spatraster(oxy_tibble_sub, xycols = 1:2,
-                              crs = WGS84, digits = 3)
-  
-  # Extract from raster
-  dat_sub$oxy <- terra::extract(oxy_raster$oxy, dat_sub |> dplyr::select(lon, lat))$oxy
-
-  # Save
-  oxy_list_new[[i]] <- dat_sub
-  
-}
-
-oxy_df_new <- bind_rows(oxy_list_new)
+d_oxy <- bind_rows(oxy_list)
 ```
 
 ### Join with stomach data
 
 ```{r}
 # Add oxygen (bind_rows first)
-oxy_all <- bind_rows(oxy_df, oxy_df_new) |> 
-  dplyr::select(lon, lat, haul_id, oxy) |>
+d_oxy <- d_oxy |> 
   distinct(lon, lat, haul_id, oxy)
 
-dat <- tidylog::left_join(dat, oxy_all, by = c("lon", "lat", "haul_id"))
- 
+dat <- tidylog::left_join(dat, d_oxy, by = c("lon", "lat", "haul_id"))
+
 ggplot(dat, aes(lon, lat, color = oxy)) +
   geom_point() +
   facet_wrap(~month_year)
