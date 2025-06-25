@@ -12,11 +12,14 @@ library(patchwork)
 library(ggplot2)
 library(ggsidekick); theme_set(theme_sleek())
 
-for_overlap <- read_csv("https://raw.githubusercontent.com/maxlindmark/cod-interactions/refs/heads/main/data/clean/for_overlap.csv")
-trawl_data <- read_csv("https://raw.githubusercontent.com/maxlindmark/cod-interactions/refs/heads/main/data/clean/trawl_data_avg.csv")
+# for_overlap <- read_csv("https://raw.githubusercontent.com/maxlindmark/cod-interactions/refs/heads/main/data/clean/for_overlap.csv")
+# trawl_data <- read_csv("https://raw.githubusercontent.com/maxlindmark/cod-interactions/refs/heads/main/data/clean/trawl_data_avg.csv")
 
 home <- here::here()
 
+for_overlap <- read_csv(paste0(home, "/data/clean/for_overlap.csv"))
+trawl_data <- read_csv(paste0(home, "/data/clean/trawl_data_avg.csv"))
+                       
 # Function to calculate diet overlap
 calculate_diet_overlap <- function(data) {
   data |>
