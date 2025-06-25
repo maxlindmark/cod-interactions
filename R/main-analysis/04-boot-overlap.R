@@ -254,7 +254,7 @@ p1 <- ggplot(all_fits_ci, aes(estimate, overlap_group)) +
   theme(legend.position.inside = c(0.15, 0.1)) +
   guides(alpha = guide_legend(position = "inside", override.aes = list(alpha = c(0.2, 0.8))),
          fill = "none", color = "none") +
-  theme(strip.text = element_text(margin = margin(b = 10))) +
+  theme(strip.text.x = element_text(margin = unit(rep(2, 4), "pt"))) +
   geom_stripped_rows(color = NA)
 
 egg::tag_facet(p1, fontface = 1, open = "", close = "")
