@@ -57,7 +57,19 @@ source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/
 
 ```{r read data}
 #| warning: false
+#| message: false
+
 d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
+
+d |>
+  summarise(length(unique(pred_id)),
+            .by = c("species", "quarter"))
+
+d |>
+  summarise(length(unique(pred_id)),
+            .by = c("species"))
+
+unique(d$year)
 ```
 
 # Diet similarity using bar plots and ordination
@@ -65,6 +77,9 @@ d <- read_csv(paste0(home, "/data/clean/aggregated_stomach_data.csv"))
 ## Ordination using `gllvm`
 
 ```{r}
+#| warning: false
+#| message: false
+
 d2 <- d |>
   dplyr::select(ends_with("_tot"))
 
@@ -72,6 +87,27 @@ d2$pred_id <- d$pred_id
 
 d2 <- d2 |>
   left_join(d |> dplyr::select(pred_length_cm, pred_weight_g, pred_id, species), by = "pred_id")
+
+# Calculate sample weights
+# The reason to round here is because data come as per hour
+dw <- d |> 
+  mutate(group = "Flounder",
+         group = ifelse(species == "Cod" & pred_length_cm <  25, "Small cod", group),
+         group = ifelse(species == "Cod" & pred_length_cm >= 25, "Large cod", group)) |> 
+  mutate(sampled_n = n(), .by = c(haul_id, group)) |> 
+  mutate(f_weight = round(n_catch_flounder) / sampled_n,
+         sc_weight = round(n_catch_small_cod) / sampled_n,
+         lc_weight = round(n_catch_large_cod) / sampled_n) |> 
+  mutate(f_weight = f_weight/mean(f_weight),
+         sc_weight = sc_weight/mean(sc_weight),
+         lc_weight = lc_weight/mean(lc_weight)) |> 
+  dplyr::select(f_weight, sc_weight, lc_weight, pred_id, group) |> 
+  mutate(weight = f_weight, 
+         weight = ifelse(group == "Large cod", lc_weight, weight),
+         weight = ifelse(group == "Small cod", sc_weight, weight)) |> 
+  dplyr::select(-f_weight, -sc_weight, -lc_weight, -group)
+
+d2$weight <- dw$weight
 
 # Calculate relative prey weight and average by size-class
 d3 <- d2 |>
@@ -84,7 +120,7 @@ d3 <- d2 |>
   mutate(pred_length_cm = ifelse(pred_length_cm == "[9", "9", pred_length_cm),
          pred_length_cm = as.numeric(pred_length_cm)) |>
   dplyr::select(-scrap) |>
-  summarise(tot_prey_weight = mean(value),
+  summarise(tot_prey_weight = weighted.mean(value, weight), #mean(value),
             n = length(unique(pred_id)), .by = c(species, pred_length_cm, name)) |>
   mutate(name = str_replace(name, "_", " "),
          name = str_replace(name, "_", " "),
@@ -92,11 +128,10 @@ d3 <- d2 |>
          name = str_to_title(name)) |>
   filter(n > 3)
 
-d3 |> as.data.frame()
+d3
 
 summary(d3$n)
 tail(d3)
-
 
 d3 |> filter(tot_prey_weight > 0) |> arrange(tot_prey_weight)
 
@@ -177,8 +212,8 @@ ordi <- ggplot(dd, aes(x = V1, y = V2, color = factor(group, levels = c("Flounde
                    color = "grey20", inherit.aes = FALSE, size = 2, alpha = 0.4,
                    box.padding = 0.25) +
   theme_sleek() +
-  xlim(-3.1, 3.1) +
-  ylim(-3.1, 3.1) + 
+  xlim(-4.1, 4.1) +
+  ylim(-3.5, 3.5) +
   guides(color = guide_legend(ncol = 4),
          size = guide_legend(ncol = 4)) + 
   theme(legend.position = "bottom",
@@ -195,12 +230,12 @@ ordi
 d3 <- d2 |> 
   pivot_longer(ends_with("_tot")) |> 
   mutate(value = value/pred_weight_g) |> 
-  summarise(tot_prey_weight = mean(value), .by = c(species, pred_length_cm, name))|>
+  #summarise(tot_prey_weight = mean(value), .by = c(species, pred_length_cm, name))|>
+  summarise(tot_prey_weight = weighted.mean(value, weight), .by = c(species, pred_length_cm, name)) |>
   mutate(name = str_replace(name, "_", " "),
          name = str_replace(name, "_", " "),
          name = str_remove(name, " tot"),
-         name = str_to_title(name)) #|> 
-  #filter(tot_prey_weight < quantile(tot_prey_weight, probs = 0.995))
+         name = str_to_title(name))
 
 max_size_cod <- 65
 
@@ -276,7 +311,6 @@ bar_diet <-
   scale_x_continuous(breaks = seq(0, 100, 5)) +
   labs(y = "Proportion", x = "Max. predator size in group [cm]") +
   theme(legend.key.size = unit(0.2, 'cm'),
-        #legend.text = element_text(face = "italic"),
         legend.position = "bottom",
         legend.margin = margin(-0.3, 0, 0, 0, unit = "cm"))
 ```

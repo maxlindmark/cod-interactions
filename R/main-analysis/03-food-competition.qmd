@@ -69,7 +69,7 @@ d <- d |>
          saduria_rel_weight = saduria_weight / (pred_weight_g - tot_weight)) |> 
   dplyr::select(-ends_with("_tot")) |> 
   dplyr::select(-predator_latin_name, date) |> 
-  # Add small constant to large cod density because we want to take the log of it
+  # Add small constant to density because we want to take the log of it
   mutate(large_cod_density = ifelse(large_cod_density == 0,
                                     min(filter(d, kg_km2_large_cod > 0)$kg_km2_large_cod)*0.5,
                                     large_cod_density),
@@ -78,7 +78,7 @@ d <- d |>
                                    flounder_density),
          small_cod_density = ifelse(small_cod_density == 0,
                                     min(filter(d, kg_km2_small_cod > 0)$kg_km2_small_cod)*0.5,
-                                    small_cod_density)) |> 
+                                    small_cod_density)) |>
   # scale variables
   mutate(fyear = as.factor(year),
          fquarter = as.factor(quarter),
@@ -92,6 +92,15 @@ d <- d |>
   # Scale length by group ..
   mutate(pred_length_cm_sc = as.numeric(scale(pred_length_cm)),
          .by = group)
+
+
+head(d) |> 
+  as.data.frame()
+
+# d |> 
+#   filter(group == "large cod") |> 
+#   filter(large_cod_density == 0) |> as.data.frame()
+# 2021_1_89
 
 t <- d |> filter(tot_rel_weight == 0)
 nrow(t)/nrow(d)
@@ -416,7 +425,7 @@ for(i in unique(d$group)) {
                   family = tweedie(),
                   weights = dd$lc_weight,
                   spatiotemporal = "iid", 
-                  spatial = "off",
+                  spatial = "on",
                   time = "year")
   
   sanity(m_tot)

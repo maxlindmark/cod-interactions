@@ -1,6 +1,7 @@
 # 2025.06.26
 # Code modified from example written by Sean C. Anderson
 library(tidyr)
+library(ggdist)
 library(stringr)
 library(purrr)
 library(dplyr)
@@ -23,14 +24,14 @@ trawl_data <- read_csv(paste0(home, "/data/clean/trawl_data_avg.csv"))
 # Function to calculate diet overlap
 calculate_diet_overlap <- function(data) {
   data |>
-    # Summarise data in spatiotemporal units
+    # Weighted mean diet in spatiotemporal units
     pivot_longer(ends_with("_tot")) |>
-    summarise(tot_prey_by_grp = sum(value),
+    summarise(wm_prey_by_grp = weighted.mean(value, weight),
       .by = c(year, quarter, ices_rect, group, name)) |>
-    mutate(tot_prey = sum(tot_prey_by_grp),
-      prop_prey = tot_prey_by_grp / tot_prey,
+    mutate(tot_prey = sum(wm_prey_by_grp),
+      prop_prey = wm_prey_by_grp / tot_prey,
       .by = c(year, quarter, ices_rect, group)) |>
-    dplyr::select(-tot_prey_by_grp, -tot_prey) |>
+    dplyr::select(-wm_prey_by_grp, -tot_prey) |>
     pivot_wider(names_from = group, values_from = prop_prey) |>
     # Calculate overlap
     summarise(`Flounder\nSmall cod` = 1 - 0.5*sum(abs(Flounder - `Small cod`)),
@@ -48,8 +49,10 @@ ovr <- calculate_diet_overlap(for_overlap) |>
 
 ovr <- ovr |>
   left_join(trawl_data, by = c("year", "quarter", "ices_rect")) |>
-  mutate(overlap_group = as.factor(overlap_group),
-    mean_biom_sc = as.numeric(scale(log(flounder + small_cod + large_cod) / 3)))
+  mutate(
+    overlap_group = as.factor(overlap_group),
+    mean_biom_sc = as.numeric(scale(log((flounder + small_cod + large_cod) / 3)))
+    )
 
 # Replace zeroes. They are so few we can't estimate much from it (e.g., with a delta-beta), especially in the bootstraps
 ovr |>
@@ -63,6 +66,7 @@ ovr_test <- ovr
 ovr <- ovr |>
   mutate(overlap = ifelse(overlap < min_pos, min_pos, overlap))
 summary(ovr$overlap)
+str(ovr)
 
 # m <- sdmTMB(
 #   list(overlap ~ 1,
@@ -73,7 +77,6 @@ summary(ovr$overlap)
 # )
 # tidy(m)
 # sanity(m)
-#
 
 set.seed(9999)
 m <- glmmTMB::glmmTMB(
@@ -83,6 +86,62 @@ m <- glmmTMB::glmmTMB(
 )
 
 nrow(ovr)
+
+# simulate residuals
+sim_res <- DHARMa::simulateResiduals(fittedModel = m, n = 1000)
+plot(sim_res)
+
+# Create theoretical quantiles for Q-Q plot
+n <- length(sim_res$scaledResiduals)
+theoretical_quantiles <- qunif(ppoints(n))
+
+# Sort scaled residuals for Q-Q plot
+sorted_residuals <- sort(sim_res$scaledResiduals)
+
+# Q-Q plot data
+qq_data <- data.frame(
+  theoretical = theoretical_quantiles,
+  sample = sorted_residuals
+)
+
+# Create Q-Q plot
+ggplot(qq_data, aes(x = theoretical, y = sample)) +
+  geom_point(alpha = 0.6, size = 1) +
+  geom_abline(slope = 1, intercept = 0) +
+  xlim(0, 1) +
+  ylim(0, 1) +
+  labs(
+    x = "Expected",
+    y = "Observed"
+  )
+
+ggsave(paste0(home, "/figures/supp/qq_beta.pdf"), width = 11, height = 11, units = "cm")
+
+str(ovr)
+
+# Make a plot of overlap values
+ggplot(ovr, aes(x = as.numeric(overlap_group) - 0.1, y = overlap, color = overlap_group, fill = overlap_group)) +
+  stat_slab(
+    aes(x = overlap_group, thickness = after_stat(pdf*n)),
+    scale = 0.8,
+    side = "right", 
+    breaks = 30,
+    alpha = 0.85, 
+    density = "histogram"
+  ) +
+  geom_point(
+    size = 0.8,
+    alpha = 0.5,
+    position = position_jitter(seed = 1, width = 0.03, height = 0)) +
+  coord_flip() +
+  scale_fill_brewer(palette = "Set1") + 
+  scale_color_brewer(palette = "Set1") + 
+  theme(legend.position = "none",
+        axis.title.y = element_blank()) +
+  labs(y = "Schoener's Overlap")
+
+ggsave(paste0(home, "/figures/supp/schoener_histo.pdf"), width = 11, height = 13, units = "cm")
+
 
 # Test a conditional effect plot to see how much the overlap changes going from highest to lowest density
 nd <- tibble(
@@ -100,7 +159,6 @@ nd |>
 ggplot(nd, aes(mean_biom_sc, pred, color = overlap_group)) +
   geom_line() +
   theme_light()
-## 
 
 summary(m)
 
@@ -110,7 +168,6 @@ intercepts <- broom.mixed::tidy(m)  |>
          overlap_group = as.factor(overlap_group)) |>
   # Note we are using the bootstrapped CI, not CI of estimates!
   mutate(estimate = plogis(estimate)) |> 
-  #mutate(across(c(estimate, conf.low, conf.high), exp)) |> 
   dplyr::select(overlap_group, estimate) |> 
   mutate(par = "intercept")
 
@@ -197,7 +254,7 @@ fit_model <- function(d, i = seq(1, nrow(d))) {
 fit_model(for_overlap)
 
 set.seed(1)
-b <- boot::boot(for_overlap, fit_model, R = 1000L)
+b <- boot::boot(for_overlap, fit_model, R = 10000L)
 boot::boot.ci(b, type = "perc", index = 1)
 boot::boot.ci(b, type = "perc", index = 2)
 boot::boot.ci(b, type = "perc", index = 3)
@@ -229,7 +286,7 @@ boot::boot.ci(b, type = "perc", index = 1)$percent
 #
 ci_tbl
 
-all_fits_ci <- ci_tbl |> left_join(all_fits, by = join_by(overlap_group, par))
+all_fits_ci <- ci_tbl |> left_join(all_fits, by = c("overlap_group", "par"))
 
 all_fits_ci
 
@@ -262,5 +319,5 @@ p1 <- ggplot(all_fits_ci, aes(estimate, overlap_group)) +
 
 egg::tag_facet(p1, fontface = 1, open = "", close = "")
  
-ggsave(paste0(home, "/figures/schoener_zib_rev.pdf"), width = 17, height = 8, units = "cm")
+ggsave(paste0(home, "/figures/schoener_zib.pdf"), width = 17, height = 8, units = "cm")
 

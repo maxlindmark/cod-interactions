@@ -93,6 +93,23 @@ d <- d |>
          .by = group)
 ```
 
+```{r}
+# Calculate weights
+
+# The reason to round here is because data come as per hour
+d <- d |> 
+  mutate(sampled_n = n(), .by = c(haul_id, group)) |> 
+  mutate(f_weight = round(n_catch_flounder) / sampled_n,
+         sc_weight = round(n_catch_small_cod) / sampled_n,
+         lc_weight = round(n_catch_large_cod) / sampled_n) |> 
+  mutate(f_weight = f_weight/mean(f_weight),
+         sc_weight = sc_weight/mean(sc_weight),
+         lc_weight = lc_weight/mean(lc_weight)) |> 
+  mutate(f_weight2 = f_weight*2,
+         sc_weight2 = sc_weight*2,
+         lc_weight2 = lc_weight*2)
+```
+
 ## Fit models
 
 Groups are: small cod, large cod and flounder. Response variables are: saduria_rel_weight, benthic_rel_weight or total weight. The latter is only for adult cod, because essentially all prey are benthic for small cod and flounder.
@@ -110,6 +127,14 @@ for(i in unique(d$group)) {
 
   dd <- filter(d, group == i)
 
+  if(i == "flounder"){
+    weigths <- dd$f_weight
+    } else if(i == "small cod"){
+      weigths <- dd$sc_weight
+      } else if(i == "large cod"){
+        weigths <- dd$lc_weight
+        }
+  
   mesh <- make_mesh(dd,
                     xy_cols = c("X", "Y"),
                     cutoff = 5)
@@ -123,6 +148,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "off",
                     spatial = "off",
                     time = "year")
@@ -136,6 +162,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "off",
                     spatial = "on",
                     time = "year")
@@ -149,6 +176,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "IID",
                     spatial = "off",
                     time = "year")
@@ -162,6 +190,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "IID",
                     spatial = "on",
                     time = "year")
@@ -176,6 +205,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "off",
                     spatial = "off",
                     time = "year")
@@ -188,6 +218,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "off",
                     spatial = "on",
                     time = "year")
@@ -201,6 +232,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "IID",
                     spatial = "off",
                     time = "year")
@@ -214,6 +246,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "IID",
                     spatial = "on",
                     time = "year")
@@ -230,6 +263,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "off",
                     spatial = "off",
                     time = "year")
@@ -241,6 +275,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "off",
                     spatial = "on",
                     time = "year")
@@ -252,6 +287,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "IID",
                     spatial = "off",
                     time = "year")
@@ -263,6 +299,7 @@ for(i in unique(d$group)) {
                     data = dd,
                     mesh = mesh,
                     family = tweedie(),
+                    weights = weigths, 
                     spatiotemporal = "IID",
                     spatial = "on",
                     time = "year")

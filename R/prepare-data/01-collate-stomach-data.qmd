@@ -458,7 +458,7 @@ trawl_data_cod <- trawl_data |>
     c(kg_km2_small_cod, kg_km2_large_cod, n_catch_small_cod, n_catch_large_cod),
     ~replace_na(., 0)
   ))
-  
+
 # Ok, so because this is catches (no hauls with no fish... the only reason I have 0 catches is if one of the size-groups doesn't have a catch!)
 
 # Check with a haul_id
@@ -619,6 +619,7 @@ dat <- left_join(stom |> dplyr::select(pred_id, data_id, pred_weight, pred_weigh
                                            lat, lon, bottom_depth, pred_id, species, lengthcl,
                                            weight, size, subdiv, date, month, X, Y, smhi_serial_no))
 
+
 length(unique(dat$pred_id))
 length(unique(stom$pred_id))
 length(unique(filter(stom, pred_id %in% bio_data$pred_id)$pred_id))
@@ -630,6 +631,16 @@ missing_ids$pred_id
 dat <- dat |> filter(pred_id %in% c(bio_data$pred_id))
 
 names(dat)
+
+trawl_data |> 
+  mutate(haul_id = paste(year, quarter, haul, sep = "_")) |> 
+  filter(year == 2021 & quarter == 1) |> 
+  #distinct(haul_id)
+  filter(haul_id == "2021_1_89")
+
+dat |> 
+  filter(haul_id == "2021_1_89") |> 
+  as.data.frame()
 ```
 
 Clean data!
