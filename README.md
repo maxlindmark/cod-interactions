@@ -1,7 +1,6 @@
 # Quantifying food competition between two demersal fish species from spatiotemporal stomach content data
 
-This repository contains all the materials needed to reproduce the analysis in manuscript "Quantifying competition between two demersal fish species
-from spatiotemporal stomach content data" by Max Lindmark, Federico Maioli, Sean C. Anderson, Mayya Gogina, Mattias Sköld, Valerio Bartolino, Mikael Ohlsson, Anna Eklöf and Michele Casini.
+In this paper we combine diet, predator biomass and prey availability data to investigate food competition using various metrics at different spatiotemporal scales.
 
 ### Reproducing Results
 
