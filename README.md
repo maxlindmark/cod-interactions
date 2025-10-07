@@ -1,16 +1,22 @@
-# Materials for "Quantifying competition between two demersal fish species from spatiotemporal stomach content data"
+# Quantifying food competition between two demersal fish species from spatiotemporal stomach content data
 
 This repository contains all the materials needed to reproduce the analysis in manuscript "Quantifying competition between two demersal fish species
 from spatiotemporal stomach content data" by Max Lindmark, Federico Maioli, Sean C. Anderson, Mayya Gogina, Mattias Sköld, Valerio Bartolino, Mikael Ohlsson, Anna Eklöf and Michele Casini.
 
-## Setup
+### Reproducing Results
 
-To simply view the analyses, download the .qmd or .html files. To reproduce the results, download a zip of the repository and work locally within the RStudio project or just with R setting the project folder as your working directory. Alternatively, you can:
+To reproduce our results you can either:
 
-1. Fork the repository on GitHub
+1. Fork the repository, clone it, open a new RStudio project with version control, and paste the repo url
 
-2. Create a new RStudio project and clone your fork
+2. Download a zip and work locally on your computer
 
-<!--R-package dependencies and versions are handled with [`renv`](https://rstudio.github.io/renv/articles/renv.html). Simply run `renv::restore()` to install the correct versions of all the packages needed to replicate our results. Packages are installed in a stand-alone project library for this paper, and will not affect your installed R packages anywhere else. 
+We use [`renv`](https://rstudio.github.io/renv/articles/renv.html) to manage package versions. Once you've downloaded the project, run `renv::restore()` in your current working directory. This will install the package versions we used when this repository was archived. Note that packages are installed in a stand-alone project library for this paper, and will not affect your installed R packages anywhere else! `renv` does *not* help with different versions of R. We used R version 4.3.2, and ran the analysis on a 24 GB Apple M2 Sequoia 15.6.1 laptop.
 
-Once you've successfully run `renv::restore()` you can reproduce our results by running R/main-analysis/food_competition.qmd and R/main-analysis/diet_overlap.qmd. You don't need to run the data preparation scripts but can jump straight to these since a trimmed and cleaned data ready for analysis are included in this repository (data/clean). Raw data needed to reproduce stomach cleaning scripts 01_collate_stomach_data.qmd and 02_summarise_stomach_data.qmd are not on GitHub but will be made available at the time of publication.-->
+### Repository structure
+
+`R`: code to prepare data, run models and make figures.
+
+`data`: trawl survey & stomach content data.
+
+`figures`: figures for paper are saved here
