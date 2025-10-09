@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/419595986.svg)](https://doi.org/10.5281/zenodo.17301283)
+
 # Quantifying food competition between two demersal fish species from spatiotemporal stomach content data
 
 In this paper we combine diet, predator biomass and prey availability data to investigate food competition using various metrics at different spatiotemporal scales.
